@@ -13,4 +13,5 @@
         "cstddef": "cpp",
         "limits": "cpp"
     },
+    "cmake.sourceDirectory": "C:/Users/y-yam/src/github.com/scottbez1/smartknob/.pio/libdeps/view/Adafruit BusIO",
 }

@@ -1,4 +1,5 @@
 #include <SimpleFOC.h>
+#include <TCA9548.h>
 
 #include "motor_task.h"
 #if SENSOR_MT6701
@@ -11,6 +12,14 @@
 
 #include "motors/motor_config.h"
 #include "util.h"
+
+#define FOC_PID_P 2
+#define FOC_PID_I 0
+#define FOC_PID_D 0.04
+#define FOC_PID_OUTPUT_RAMP 10000
+#define FOC_PID_LIMIT 10
+
+#define FOC_VOLTAGE_LIMIT 5
 
 static const float DEAD_ZONE_DETENT_PERCENT = 0.2;
 static const float DEAD_ZONE_RAD = 1 * _PI / 180;
@@ -36,6 +45,9 @@ MotorTask::~MotorTask() {}
     MT6701Sensor encoder = MT6701Sensor();
 #elif SENSOR_MAQ430
     MagneticSensorSPI encoder = MagneticSensorSPI(MAQ430_SPI, PIN_MAQ_SS);
+#elif SENSOR_AS5600_I2C
+    TCA9548 mux(0x70);
+    MagneticSensorI2C encoder = MagneticSensorI2C(AS5600_I2C);
 #endif
 
 void MotorTask::run() {
@@ -51,6 +63,11 @@ void MotorTask::run() {
     SPIClass* spi = new SPIClass(HSPI);
     spi->begin(PIN_MAQ_SCK, PIN_MAQ_MISO, PIN_MAQ_MOSI, PIN_MAQ_SS);
     encoder.init(spi);
+    #elif SENSOR_AS5600_I2C
+    Wire.begin(PIN_SDA, PIN_SCL);
+    mux.begin();
+    mux.selectChannel(0);
+    encoder.init();
     #endif
 
     motor.linkDriver(&driver);

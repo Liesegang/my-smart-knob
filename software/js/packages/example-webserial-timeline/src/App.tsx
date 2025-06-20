@@ -1,15 +1,15 @@
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Typography from '@mui/material/Typography'
 import Container from '@mui/material/Container'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
-import {PB} from 'smartknobjs-proto'
-import {VideoInfo} from './types'
-import {Button, CardActions, Paper} from '@mui/material'
-import {exhaustiveCheck, findNClosest, lerp, NoUndefinedField} from './util'
-import {groupBy, parseInt} from 'lodash'
+import { PB } from 'smartknobjs-proto'
+import { VideoInfo } from './types'
+import { Button, CardActions, Paper } from '@mui/material'
+import { exhaustiveCheck, findNClosest, lerp, NoUndefinedField } from './util'
+import { groupBy, parseInt } from 'lodash'
 import _ from 'lodash'
-import {SmartKnobWebSerial} from 'smartknobjs-webserial'
+import { SmartKnobWebSerial } from 'smartknobjs-webserial'
 
 const MIN_ZOOM = 0.01
 const MAX_ZOOM = 60
@@ -38,10 +38,10 @@ type Config = NoUndefinedField<PB.ISmartKnobConfig> & {
 export type AppProps = {
     info: VideoInfo
 }
-export const App: React.FC<AppProps> = ({info}) => {
+export const App: React.FC<AppProps> = ({ info }) => {
     const [smartKnob, setSmartKnob] = useState<SmartKnobWebSerial | null>(null)
     const [smartKnobState, setSmartKnobState] = useState<NoUndefinedField<PB.ISmartKnobState>>(
-        PB.SmartKnobState.toObject(PB.SmartKnobState.create({config: PB.SmartKnobConfig.create()}), {
+        PB.SmartKnobState.toObject(PB.SmartKnobState.create({ config: PB.SmartKnobConfig.create() }), {
             defaults: true,
         }) as NoUndefinedField<PB.ISmartKnobState>,
     )
@@ -135,7 +135,7 @@ export const App: React.FC<AppProps> = ({info}) => {
                             ((info.totalFrames - 1) * curConfig.zoomTimelinePixelsPerFrame) / PIXELS_PER_POSITION,
                         ),
                         positionWidthRadians: (8 * Math.PI) / 180,
-                        detentStrengthUnit: 3,
+                        detentStrengthUnit: 10,
                         endstopStrengthUnit: 1,
                         snapPoint: 0.7,
                         text: Mode.Scroll,
@@ -219,7 +219,7 @@ export const App: React.FC<AppProps> = ({info}) => {
 
         const currentMode = smartKnobState.config.text as Mode
         if (currentMode !== smartKnobConfig.text) {
-            console.debug('Mode mismatch, ignoring state', {configMode: smartKnobConfig.text, stateMode: currentMode})
+            console.debug('Mode mismatch, ignoring state', { configMode: smartKnobConfig.text, stateMode: currentMode })
             return
         }
 
@@ -228,7 +228,7 @@ export const App: React.FC<AppProps> = ({info}) => {
             // TODO: round input based on zoom level to avoid noise
             const rawFrame = Math.trunc(
                 ((smartKnobState.currentPosition + smartKnobState.subPositionUnit) * PIXELS_PER_POSITION) /
-                    smartKnobConfig.zoomTimelinePixelsPerFrame,
+                smartKnobConfig.zoomTimelinePixelsPerFrame,
             )
             const frame =
                 detentPositions[smartKnobState.currentPosition]?.[0] ??
@@ -396,7 +396,7 @@ export const App: React.FC<AppProps> = ({info}) => {
     return (
         <>
             <Container component="main" maxWidth="lg">
-                <Paper variant="outlined" sx={{my: {xs: 3, md: 6}, p: {xs: 2, md: 3}}}>
+                <Paper variant="outlined" sx={{ my: { xs: 3, md: 6 }, p: { xs: 2, md: 3 } }}>
                     <Typography component="h1" variant="h5">
                         Video Playback Control Demo
                     </Typography>
@@ -468,7 +468,7 @@ export type TimelineProps = {
     zoomTimelinePixelsPerFrame: number
     adjustZoom: (factor: number) => void
 }
-export const Timeline: React.FC<TimelineProps> = ({info, currentFrame, zoomTimelinePixelsPerFrame, adjustZoom}) => {
+export const Timeline: React.FC<TimelineProps> = ({ info, currentFrame, zoomTimelinePixelsPerFrame, adjustZoom }) => {
     const gradients = [
         'linear-gradient( 135deg, #FDEB71 10%, #F8D800 100%)',
         'linear-gradient( 135deg, #ABDCFF 10%, #0396FF 100%)',
