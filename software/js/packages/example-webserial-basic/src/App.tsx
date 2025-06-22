@@ -123,7 +123,7 @@ export const App: React.FC<AppProps> = () => {
 
     const setSoft = async () => {
         pendingSmartKnobConfig.detentStrengthUnit = '0.3'
-        pendingSmartKnobConfig.snapPoint = '0.3'
+        pendingSmartKnobConfig.snapPoint = '0.5'
         pendingSmartKnobConfig.text = 'Soft mode'
         pendingSmartKnobConfig.maxPosition = '20'
         pendingSmartKnobConfig.positionWidthRadians = '0.3'
@@ -133,7 +133,7 @@ export const App: React.FC<AppProps> = () => {
 
     const setSmall = async () => {
         pendingSmartKnobConfig.detentStrengthUnit = '0.3'
-        pendingSmartKnobConfig.snapPoint = '0.3'
+        pendingSmartKnobConfig.snapPoint = '0.5'
         pendingSmartKnobConfig.text = 'Small mode'
         pendingSmartKnobConfig.maxPosition = '200'
         pendingSmartKnobConfig.positionWidthRadians = '0.05'
