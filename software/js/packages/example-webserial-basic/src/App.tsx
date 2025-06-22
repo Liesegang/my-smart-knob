@@ -93,6 +93,54 @@ export const App: React.FC<AppProps> = () => {
         }
     }
 
+    const submit = () => {
+        setSmartKnobConfig({
+            position: parseInt(pendingSmartKnobConfig.position) || 0,
+            subPositionUnit: parseFloat(pendingSmartKnobConfig.subPositionUnit) || 0,
+            positionNonce: parseInt(pendingSmartKnobConfig.positionNonce) || 0,
+            minPosition: parseInt(pendingSmartKnobConfig.minPosition) || 0,
+            maxPosition: parseInt(pendingSmartKnobConfig.maxPosition) || 0,
+            positionWidthRadians: parseFloat(pendingSmartKnobConfig.positionWidthRadians) || 0,
+            detentStrengthUnit: parseFloat(pendingSmartKnobConfig.detentStrengthUnit) || 0,
+            endstopStrengthUnit: parseFloat(pendingSmartKnobConfig.endstopStrengthUnit) || 0,
+            snapPoint: parseFloat(pendingSmartKnobConfig.snapPoint) || 0,
+            text: pendingSmartKnobConfig.text,
+            detentPositions: [],
+            snapPointBias: parseFloat(pendingSmartKnobConfig.snapPointBias) || 0,
+            ledHue: 0,
+        })
+    }
+
+    const setHard = async () => {
+        pendingSmartKnobConfig.detentStrengthUnit = '1.0'
+        pendingSmartKnobConfig.snapPoint = '2.0'
+        pendingSmartKnobConfig.text = 'Hard mode'
+        pendingSmartKnobConfig.maxPosition = '20'
+        pendingSmartKnobConfig.positionWidthRadians = '0.3'
+
+        submit()
+    }
+
+    const setSoft = async () => {
+        pendingSmartKnobConfig.detentStrengthUnit = '0.3'
+        pendingSmartKnobConfig.snapPoint = '0.3'
+        pendingSmartKnobConfig.text = 'Soft mode'
+        pendingSmartKnobConfig.maxPosition = '20'
+        pendingSmartKnobConfig.positionWidthRadians = '0.3'
+
+        submit()
+    }
+
+    const setSmall = async () => {
+        pendingSmartKnobConfig.detentStrengthUnit = '0.3'
+        pendingSmartKnobConfig.snapPoint = '0.3'
+        pendingSmartKnobConfig.text = 'Small mode'
+        pendingSmartKnobConfig.maxPosition = '200'
+        pendingSmartKnobConfig.positionWidthRadians = '0.05'
+
+        submit()
+    }
+
     return (
         <>
             <Container component="main" maxWidth="lg">
@@ -102,6 +150,17 @@ export const App: React.FC<AppProps> = () => {
                     </Typography>
                     {smartKnob !== null ? (
                         <>
+                            <CardActions>
+                                <Button onClick={setHard} variant="contained">
+                                    Set Hard Preset
+                                </Button>
+                                <Button onClick={setSoft} variant="contained">
+                                    Set Soft Preset
+                                </Button>
+                                <Button onClick={setSmall} variant="contained">
+                                    Set Small Preset
+                                </Button>
+                            </CardActions>
                             <Box
                                 component="form"
                                 sx={{
