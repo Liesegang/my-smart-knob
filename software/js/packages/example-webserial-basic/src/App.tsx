@@ -132,7 +132,7 @@ export const App: React.FC<AppProps> = () => {
     }
 
     const setSmall = async () => {
-        pendingSmartKnobConfig.detentStrengthUnit = '0.3'
+        pendingSmartKnobConfig.detentStrengthUnit = '1.0'
         pendingSmartKnobConfig.snapPoint = '0.5'
         pendingSmartKnobConfig.text = 'Small mode'
         pendingSmartKnobConfig.maxPosition = '200'
