@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link rel="icon" href="data:," />
+    <title>SmartKnob Demo</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="#haptics">SmartKnob Demo</a>
+      <nav aria-label="デモ">
+        <button data-mode="haptics" class="active">ハプティクス</button
+        ><button data-mode="video">動画デモ</button>
+      </nav>
+      <div class="connection">
+        <button id="connect">USBで接続</button
+        ><button id="disconnect" hidden>切断</button>
+      </div>
+    </header>
+    <main>
+      <div id="notice" role="status" aria-live="polite"></div>
+      <div id="haptics">
+        <div class="intro">
+          <h1>ハプティクスデモ</h1>
+          <p>
+            8種類のプリセットをノブで試せます。<span class="keyboard-hint"
+              >数字キー 1–8 で切り替え</span
+            >
+          </p>
+        </div>
+        <div class="studio">
+          <div
+            id="presets"
+            class="preset-list"
+            aria-label="感触のプリセット"
+          ></div>
+          <div class="dial-area">
+            <svg
+              id="dial"
+              viewBox="0 0 440 440"
+              role="img"
+              aria-label="ノブの現在位置"
+            ></svg>
+          </div>
+          <article class="explanation">
+            <h2 id="preset-name">粗い</h2>
+            <p id="tag" class="tag"></p>
+            <div id="variants" class="variants" aria-label="感触の比較"></div>
+            <div class="parameters">
+              <div>
+                <strong id="angle"></strong><span>1ステップの角度</span>
+              </div>
+              <div><strong id="unit"></strong><span id="caption"></span></div>
+            </div>
+            <div class="wave-heading">
+              <p class="small">抵抗とヒステリシス</p>
+              <output id="wave-position">0.00</output>
+            </div>
+            <svg
+              id="wave"
+              viewBox="0 0 360 100"
+              role="img"
+              aria-label="抵抗の概念図"
+            ></svg>
+            <div class="wave-legend">
+              <span>橙 実線：右へ</span><span>青 破線：左へ</span
+              ><span>黒：現在位置</span>
+            </div>
+            <p class="help">位置による復元力の概念図。実測値ではありません。</p>
+            <p id="description" class="description"></p>
+          </article>
+        </div>
+        <div class="preview-row">
+          <label for="preview">ドラッグして動きをプレビュー</label
+          ><input
+            id="preview"
+            type="range"
+            min="-24"
+            max="24"
+            step="0.01"
+            value="0"
+          /><button id="reset-preview" class="small-button">中央に戻す</button
+          ><span id="preview-note">USB未接続 · 画面上のシミュレーション</span>
+        </div>
+      </div>
+      <div id="video" hidden>
+        <div class="intro">
+          <h1>動画コントロール</h1>
+          <p>ノブで再生位置とシーク速度を操作できます。</p>
+        </div>
+        <div class="video-workspace">
+          <section class="video-controls">
+            <div class="section-heading">
+              <h2>Big Buck Bunny</h2>
+              <a
+                href="https://peach.blender.org/"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="source-link"
+                >Blender Foundation ↗</a
+              >
+            </div>
+            <div class="player-frame">
+              <video id="player" preload="auto" playsinline aria-label="Big Buck Bunny デモ動画"></video>
+            </div>
+            <p id="player-status" class="help" role="status">
+              動画を読み込んでいます…
+            </p>
+            <div class="playback-row">
+              <div class="clock">
+                <strong id="time">0:00</strong><span id="duration">/ —</span>
+              </div>
+              <div class="playback-actions">
+                <button id="play" disabled>再生</button>
+                <button id="mute" class="small-button" aria-pressed="false" disabled>消音</button>
+              </div>
+            </div>
+            <div
+              id="timeline"
+              class="timeline"
+              aria-label="タイムスタンプ"
+            ></div>
+            <p id="markers" class="description">吸着点を読み込んでいます。</p>
+            <p class="help">
+              シーンの目印をデモ用に設定しています。
+            </p>
+            <p class="help media-credit">
+              © 2008 Blender Foundation · <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener noreferrer">CC BY 3.0</a>
+              · ローカル動画
+            </p>
+          </section>
+          <section class="settings">
+            <h2>時間のコントロール</h2>
+            <div class="control-modes" aria-label="動画操作モード">
+              <button
+                data-control="position"
+                class="active"
+                aria-pressed="true"
+              >
+                位置</button
+              ><button data-control="speed" aria-pressed="false">速度</button>
+            </div>
+            <p id="control-description" class="description">
+              回転した分だけシーク。タイムスタンプで、ぴたっと吸着。
+            </p>
+            <div id="position-controls">
+              <label for="video-position">再生位置</label
+              ><input
+                id="video-position"
+                type="range"
+                min="0"
+                max="600"
+                step="0.1"
+                value="0"
+                disabled
+              /><button id="sync" class="small-button">
+                ノブを再生位置に合わせる
+              </button>
+            </div>
+            <div id="speed-controls" hidden>
+              <output id="speed-output">停止</output
+              ><label for="velocity"
+                >左：巻き戻し / 中央：停止 / 右：早送り</label
+              ><input
+                id="velocity"
+                type="range"
+                min="-2"
+                max="2"
+                step="0.01"
+                value="0"
+              /><button id="stop-speed" class="small-button">中央で停止</button>
+              <p class="help">
+                ノブは手を離すと中央に戻ります。画面のスライダーも離すと停止します。最大
+                ±32倍のシークです。
+              </p>
+            </div>
+            <label for="width">1秒あたりの回転角（位置モード）</label
+            ><select id="width">
+              <option value="1">1° · 1回転で360秒</option>
+              <option value="3" selected>3° · 1回転で120秒</option>
+              <option value="6">6° · 1回転で60秒</option>
+            </select>
+            <label for="strength">吸着の強さ（位置モード）</label
+            ><input
+              id="strength"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value="0.6"
+            />
+            <label for="manual">追加のタイムスタンプ</label
+            ><textarea id="manual" rows="2" placeholder="1:23 4:56"></textarea>
+            <p class="help">空白・改行区切り。デモの吸着点に追加されます。</p>
+            <button id="apply" class="primary">設定を適用</button>
+          </section>
+        </div>
+      </div>
+      <footer>
+        <span id="status">未接続</span
+        ><span>接続中はこのタブを開いたままにしてください。</span>
+      </footer>
+    </main>
+    <script src="controller.js"></script>
+  </body>
+</html>
