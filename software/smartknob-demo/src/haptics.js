@@ -1,9 +1,5 @@
-// Shared physical angle and normalized P-output axes for every preset.
+// Both axes fit the selected pattern and stay fixed while the knob turns.
 export const waveAxes = Object.freeze({
-  minAngle: -240,
-  maxAngle: 240,
-  minForce: -0.2,
-  maxForce: 0.2,
   samples: 1920,
 });
 
@@ -55,9 +51,27 @@ function waveCenter(config) {
 export function waveAngle(value, config) {
   return (value - waveCenter(config)) * config.positionWidthRadians * 180 / Math.PI;
 }
+function niceCeiling(value) {
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const step = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]
+    .find((step) => step >= value / magnitude - 1e-10);
+  return Number((step * magnitude).toPrecision(3));
+}
+export function waveAngleRange(config) {
+  const width = config.positionWidthRadians * 180 / Math.PI;
+  const bounded = config.minPosition <= config.maxPosition;
+  // Show about eight clicks, or the whole bounded travel with half a step
+  // beyond each stop. A centered spring gets one full step to either side.
+  const extent = bounded
+    ? Math.max(width, (config.maxPosition - config.minPosition + 1) * width / 2)
+    : config.detentStrengthUnit > 0 ? width * 4 : 180;
+  const maxAngle = !bounded && config.detentStrengthUnit === 0 ? 180 : niceCeiling(extent);
+  return { minAngle: -maxAngle, maxAngle };
+}
 export function waveDomain(config) {
   const width = config.positionWidthRadians * 180 / Math.PI;
-  return [waveAxes.minAngle, waveAxes.maxAngle].map(
+  const { minAngle, maxAngle } = waveAngleRange(config);
+  return [minAngle, maxAngle].map(
     (angle) => waveCenter(config) + angle / width,
   );
 }
@@ -87,7 +101,16 @@ export function waveSamples(config) {
     }
     return points;
   }
-  return { min, max, forward: branch(1), reverse: branch(-1) };
+  const forward = branch(1), reverse = branch(-1);
+  let peak = 0;
+  for (const samples of [forward, reverse])
+    for (const sample of samples) peak = Math.max(peak, Math.abs(sample.force));
+  // Fit both hysteresis branches with headroom, and keep zero in the middle.
+  // Free rotation still needs a nonzero range. Recalculate on preset changes,
+  // not cursor movement, so the axis stays still while the knob is turned.
+  const padded = peak > 0 ? peak * 1.12 : 0.2;
+  const maxForce = niceCeiling(padded);
+  return { min, max, ...waveAngleRange(config), minForce: -maxForce, maxForce, forward, reverse };
 }
 export function shuttleSpeed(value) {
   const magnitude = Math.max(0, Math.abs(value) - 0.12);

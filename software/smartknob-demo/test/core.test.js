@@ -124,20 +124,31 @@ test("hysteresis uses direction-dependent states; cursor wraps on both sides", (
   assert.equal(samples.reverse.length, waveAxes.samples + 1);
   assert.ok(samples.forward.every((p) => Number.isFinite(p.force)));
 });
-test("every preset and variant uses the same physical angle range", () => {
+test("every preset and variant fits its travel and torque curves", () => {
   for (const preset of presets) {
     for (let variant = 0; variant < (preset.variants?.length || 1); variant++) {
       const c = presetConfig(preset, 1, variant);
       const [min, max] = waveDomain(c);
-      assert.ok(Math.abs(waveAngle(min, c) + 240) < 1e-9);
-      assert.ok(Math.abs(waveAngle(max, c) - 240) < 1e-9);
-      assert.ok(Math.abs(waveAngle((min + max) / 2, c)) < 1e-9);
       const samples = waveSamples(c);
+      assert.ok(Math.abs(waveAngle(min, c) - samples.minAngle) < 1e-9);
+      assert.ok(Math.abs(waveAngle(max, c) - samples.maxAngle) < 1e-9);
+      assert.equal(samples.minAngle, -samples.maxAngle);
+      if (c.minPosition <= c.maxPosition) {
+        assert.ok(min < c.minPosition && max > c.maxPosition, "show both endstops with margin");
+      } else if (c.detentStrengthUnit > 0) {
+        assert.ok(max - min >= 8 - 1e-9 && max - min <= 10, "show a readable number of clicks");
+      }
+      assert.ok(Math.abs(waveAngle((min + max) / 2, c)) < 1e-9);
+      assert.ok(Number.isFinite(samples.maxForce) && samples.maxForce > 0);
+      assert.equal(samples.minForce, -samples.maxForce);
+      assert.ok([...samples.forward, ...samples.reverse].every(
+        ({ force }) => force > samples.minForce && force < samples.maxForce,
+      ), "both directional curves must fit without clipping");
       assert.ok([...samples.forward, ...samples.reverse].every(
         ({ force }) => Number.isFinite(force) && force >= -1 && force <= 1,
       ));
-      assert.equal(wrappedValue(241, -240, 240), -239);
-      assert.equal(wrappedValue(-241, -240, 240), 239);
+      assert.equal(wrappedValue(samples.maxAngle + 1, samples.minAngle, samples.maxAngle), samples.minAngle + 1);
+      assert.equal(wrappedValue(samples.minAngle - 1, samples.minAngle, samples.maxAngle), samples.maxAngle - 1);
     }
   }
 });
@@ -155,7 +166,7 @@ test("force compares the same angular error on one shared firmware P scale", () 
 });
 test("chart zoom does not change the modeled firmware output limit", () => {
   const spring = presetConfig(presets.find((p) => p.id === "spring"), 1);
-  assert.ok(Math.abs(forceAt(2, 0, spring)) > waveAxes.maxForce);
+  assert.ok(Math.abs(forceAt(2, 0, spring)) > 0.2);
   assert.equal(forceAt(100, 0, spring), -1);
   assert.equal(forceAt(-100, 0, spring), 1);
 });
