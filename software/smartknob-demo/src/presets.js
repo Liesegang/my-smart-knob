@@ -118,7 +118,7 @@ export const presets = [
     description:
       "特定の場所だけに、ぴたっと吸着。等間隔と不規則な並びで、目印の配置が手応えをどう変えるか比べてください。",
     width: 10,
-    strength: 0.7,
+    strength: 1.0,
     snap: 0.7,
     min: 0,
     max: 36,

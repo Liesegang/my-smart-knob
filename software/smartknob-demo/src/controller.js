@@ -1,9 +1,7 @@
 import { Connection } from "./protocol.js";
 import { presets, presetConfig, neutralConfig } from "./presets.js";
 import { renderDial, renderWave, updateWaveCursor } from "./visuals.js";
-import { advancePosition, shuttleSpeed } from "./haptics.js";
-import { VideoPlayer, DEMO } from "./player.js";
-import { VideoControl } from "./video.js";
+import { advancePosition } from "./haptics.js";
 
 const $ = (id) => document.getElementById(id);
 let connection = null,
@@ -21,12 +19,6 @@ const isConnected = () => connection && !connection.closed;
 const notice = (text) => {
   $("notice").textContent = text;
 };
-const clock = (seconds) => {
-  const n = Math.max(0, Math.floor(seconds));
-  return n >= 3600
-    ? `${Math.floor(n / 3600)}:${String(Math.floor(n / 60) % 60).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`
-    : `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
-};
 function sendConfig(next) {
   if (isConnected()) connection.config(next);
 }
@@ -36,84 +28,29 @@ function idle() {
     isNeutral = true;
   }
 }
-const player = new VideoPlayer((message) => {
-  notice(message);
-  video.invalidate();
-});
-const video = new VideoControl(
-  player,
-  (next) => {
-    isNeutral = false;
-    sendConfig(next);
-  },
-  (state) => {
-    $("sync").disabled = !state || !isConnected();
-    $("video-position").disabled = !state;
-    $("velocity").disabled = !state || !!isConnected();
-    $("play").disabled = !state || video.control === "speed";
-    $("play").textContent = !state || state.paused ? "再生" : "一時停止";
-    $("mute").disabled = !state;
-    $("mute").textContent = state?.muted ? "音声オン" : "消音";
-    $("mute").setAttribute("aria-pressed", String(!!state?.muted));
-    document.querySelector('[data-control="speed"]').disabled =
-      !state || !state.canShuttle;
-    if (!state) {
-      $("time").textContent = "0:00";
-      $("duration").textContent = "/ —";
-      $("timeline").replaceChildren();
-      $("timeline").dataset.signature = "";
-      $("player-status").textContent =
-        "ローカル動画を読み込んでいます…";
-      if (mode === "video") idle();
-      return;
-    }
-    const scene = [...DEMO.scenes]
-      .reverse()
-      .find((scene) => scene.time <= state.time);
-    $("player-status").textContent = scene
-      ? `${clock(scene.time)} · ${scene.label}`
-      : "Big Buck Bunny";
-    $("time").textContent = clock(state.time);
-    $("duration").textContent = `/ ${clock(state.duration)}`;
-    $("video-position").max = state.duration;
-    if (document.activeElement !== $("video-position"))
-      $("video-position").value = state.time;
-    $("speed-output").textContent = state.speed
-      ? `${state.speed > 0 ? "+" : ""}${state.speed.toFixed(1)}×`
-      : "停止";
-    $("markers").textContent =
-      `吸着点 ${state.markers.length}か所 · ${state.markers.map(clock).join(" / ")}`;
-    const signature = state.markers.join(",") + ":" + state.duration;
-    if ($("timeline").dataset.signature !== signature) {
-      $("timeline").dataset.signature = signature;
-      $("timeline").replaceChildren();
-      let lastLabel = -100;
-      for (const time of state.markers) {
-        const button = document.createElement("button");
-        button.style.left = `${(time / state.duration) * 100}%`;
-        const scene = DEMO.scenes.find((scene) => scene.time === time);
-        button.title = scene ? `${clock(time)} · ${scene.label}` : clock(time);
-        button.setAttribute("aria-label", `${clock(time)}へシーク`);
-        const percent = (time / state.duration) * 100;
-        if (percent - lastLabel > 12) {
-          const label = document.createElement("span");
-          label.textContent = clock(time);
-          button.append(label);
-          lastLabel = percent;
+let desktop = null;
+let desktopLoading = null;
+async function loadDesktop() {
+  if (desktop) return desktop;
+  if (!desktopLoading) desktopLoading = import("./desktop.js").then(({ mountDesktop }) => {
+    desktop = mountDesktop($("desktop-host"), {
+      sendConfig: (next) => {
+        if (mode === "os" && !document.hidden) {
+          isNeutral = false;
+          sendConfig(next);
         }
-        button.addEventListener("click", () => {
-          video.setSpeed(0);
-          video.queueSeek(time);
-        });
-        $("timeline").append(button);
-      }
-    }
-    $("timeline").style.setProperty(
-      "--progress",
-      `${Math.min(100, (state.time / state.duration) * 100)}%`,
-    );
-  },
-);
+      },
+    });
+    desktop.setConnected(!!isConnected());
+    desktop.setEnabled(mode === "os");
+    return desktop;
+  }).catch((error) => {
+    desktopLoading = null;
+    notice(`OS Demoを読み込めませんでした。${error.message}`);
+    throw error;
+  });
+  return desktopLoading;
+}
 
 function updateConnectionUI() {
   const connected = isConnected();
@@ -130,7 +67,7 @@ function updateConnectionUI() {
     : connecting
       ? "接続しています…"
       : "未接続";
-  $("sync").disabled = !connected || !video.state;
+  desktop?.setConnected(!!connected);
 }
 function draw() {
   renderDial($("dial"), selected, config, value);
@@ -197,30 +134,27 @@ for (const [index, preset] of presets.entries()) {
   $("presets").append(button);
 }
 function setMode(next) {
-  // Keep existing bookmarks working after replacing the embedded player.
-  if (next === "youtube") next = "video";
-  if (!["haptics", "video"].includes(next)) next = "haptics";
+  // Existing video/YouTube bookmarks now open the replacement OS demo.
+  if (["youtube", "video", "desktop"].includes(next)) next = "os";
+  if (!["haptics", "os"].includes(next)) next = "haptics";
   mode = next;
   notice("");
+  desktop?.setEnabled(false);
   $("haptics").hidden = mode !== "haptics";
-  $("video").hidden = mode !== "video";
+  $("os").hidden = mode !== "os";
+  document.body.classList.toggle("os-mode", mode === "os");
   document.querySelectorAll("nav [data-mode]").forEach((button) => {
     const active = button.dataset.mode === mode;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   });
-  if (mode === "video") {
+  if (mode === "os") {
     cancelAnimationFrame(previewFrame);
     drag = null;
     idle();
-    video.enabled = true;
-    if (video.state) video.sync();
-    void player.mount();
-    video.poll();
-  } else {
-    video.stop();
-    selectPreset(selected, variant);
-  }
+    if (desktop) desktop.setEnabled(true);
+    else void loadDesktop().catch(() => {});
+  } else selectPreset(selected, variant);
 }
 document.querySelectorAll("[data-mode]").forEach((button) =>
   button.addEventListener("click", () => {
@@ -230,62 +164,6 @@ document.querySelectorAll("[data-mode]").forEach((button) =>
   }),
 );
 window.addEventListener("hashchange", () => setMode(location.hash.slice(1)));
-document.querySelectorAll("[data-control]").forEach((button) =>
-  button.addEventListener("click", () => {
-    video.setControl(button.dataset.control);
-    document.querySelectorAll("[data-control]").forEach((other) => {
-      const active = other.dataset.control === video.control;
-      other.classList.toggle("active", active);
-      other.setAttribute("aria-pressed", String(active));
-    });
-    $("position-controls").hidden = video.control !== "position";
-    $("speed-controls").hidden = video.control !== "speed";
-    $("velocity").value = 0;
-    $("control-description").textContent =
-      video.control === "position"
-        ? "回転した分だけシーク。タイムスタンプで、ぴたっと吸着。"
-        : "ひねり量で速度が変化。右で早送り、左で巻き戻し、中央で停止。";
-  }),
-);
-$("video-position").addEventListener("input", () =>
-  video.queueSeek(Number($("video-position").value)),
-);
-$("velocity").addEventListener("input", () => {
-  video.setSpeed(shuttleSpeed(Number($("velocity").value) * 3));
-  video.poll();
-});
-function stopSpeed() {
-  video.setSpeed(0);
-  $("velocity").value = 0;
-  $("speed-output").textContent = "停止";
-}
-for (const event of ["pointerup", "pointercancel", "keyup", "blur"])
-  $("velocity").addEventListener(event, stopSpeed);
-$("stop-speed").addEventListener("click", () => {
-  stopSpeed();
-  video.sync();
-});
-$("play").addEventListener("click", () => {
-  if (player.snapshot()?.paused) player.play();
-  else player.pause();
-});
-$("mute").addEventListener("click", () => {
-  player.toggleMute();
-  video.poll();
-});
-$("sync").addEventListener("click", () => video.sync());
-$("apply").addEventListener("click", () => {
-  try {
-    video.settings(
-      Number($("width").value),
-      Number($("strength").value),
-      $("manual").value,
-    );
-    notice("シークの設定を適用しました。");
-  } catch (error) {
-    notice(error.message);
-  }
-});
 $("connect").addEventListener("click", async () => {
   if (!navigator.serial) {
     notice("USB接続にはデスクトップ版Chromeを使ってください。");
@@ -300,7 +178,7 @@ $("connect").addEventListener("click", async () => {
     const port = await navigator.serial.requestPort();
     candidate = new Connection(
       (state) => {
-        if (mode === "video" && !document.hidden) video.onKnob(state);
+        if (mode === "os" && !document.hidden) desktop?.receive(state);
         else if (
           state.config?.text === config.text &&
           Number.isFinite(state.currentPosition + state.subPositionUnit)
@@ -312,8 +190,6 @@ $("connect").addEventListener("click", async () => {
       },
       (message) => {
         notice(message);
-        video.setSpeed(0);
-        video.config = null;
         if (connection === candidate) connection = null;
         updateConnectionUI();
       },
@@ -322,11 +198,11 @@ $("connect").addEventListener("click", async () => {
     await candidate.open(port);
     if (candidate.closed) throw new Error("デバイスへの接続に失敗しました。");
     cancelAnimationFrame(previewFrame);
-    if (mode === "video") {
-      video.enabled = true;
+    if (mode === "os") {
       isNeutral = false;
       idle();
-      video.sync();
+      desktop?.setConnected(true);
+      desktop?.setEnabled(true);
     } else selectPreset(selected, variant);
   } catch (error) {
     if (candidate) await candidate.close();
@@ -341,13 +217,12 @@ $("disconnect").addEventListener("click", async () => {
   const old = connection;
   if (!old) return;
   $("disconnect").disabled = true;
-  video.stop();
+  desktop?.setConnected(false);
   // Leave the motor free when the user explicitly disconnects.
   old.config(neutralConfig(++nonce));
   await old.drain(1200);
   await old.close();
   connection = null;
-  if (mode === "video") video.enabled = true;
   $("disconnect").disabled = false;
   updateConnectionUI();
   notice("切断しました。");
@@ -407,11 +282,12 @@ for (const type of ["pointerup", "pointercancel"])
     }
   });
 window.addEventListener("pagehide", () => {
-  video.stop();
+  desktop?.setEnabled(false);
   void connection?.close();
 });
 window.addEventListener("keydown", (event) => {
   if (
+    mode !== "haptics" ||
     event.ctrlKey ||
     event.metaKey ||
     event.altKey ||
@@ -424,19 +300,12 @@ window.addEventListener("keydown", (event) => {
   const index = Number(event.key) - 1;
   if (event.key.length === 1 && index >= 0 && index < presets.length) {
     event.preventDefault();
-    if (mode !== "haptics") {
-      history.replaceState(null, "", "#haptics");
-      setMode("haptics");
-    }
     selectPreset(presets[index]);
   }
 });
-setInterval(() => {
-  if (mode === "video") video.poll();
-}, 250);
-setInterval(() => video.tick(), 100);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) stopSpeed();
+  if (document.hidden) idle();
+  else if (mode === "haptics") selectPreset(selected, variant);
 });
 setMode(location.hash.slice(1));
 updateConnectionUI();

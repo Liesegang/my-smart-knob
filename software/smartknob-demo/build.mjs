@@ -38,9 +38,36 @@ await build({
   outdir: "dist",
   format: "iife",
   target: "chrome120",
+  external: ["./desktop.js"],
+});
+// The OS shares this page's USB owner, and loads only when its tab is opened.
+await build({
+  ...bundleOptions,
+  entryPoints: ["../smartknob-desktop/src/embedded.jsx"],
+  outfile: "dist/desktop.js",
+  format: "esm",
+  target: "chrome120",
+  minify: true,
+  define: { "process.env.NODE_ENV": '"production"' },
+  loader: { ".css": "text" },
+  alias: {
+    ...bundleOptions.alias,
+    react: require.resolve("react"),
+    "react-dom/client": require.resolve("react-dom/client"),
+    "react-dom": require.resolve("react-dom"),
+  },
+  plugins: [{
+    name: "shared-transport",
+    setup(builder) {
+      builder.onResolve({ filter: /\.generated\/transport\.js$/ }, () => ({
+        path: fileURLToPath(new URL("./src/protocol.js", import.meta.url)),
+      }));
+    },
+  }],
 });
 for (const name of ["index.html", "style.css"])
   await copyFile(`src/${name}`, `dist/${name}`);
+await copyFile("../smartknob-desktop/public/coast.png", "dist/coast.png");
 await mkdir("dist/media", { recursive: true });
 for (const name of ["big-buck-bunny.mp4", "README.md"])
   await copyFile(`media/${name}`, `dist/media/${name}`);

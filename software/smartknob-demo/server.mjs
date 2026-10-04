@@ -8,6 +8,8 @@ const files = new Map([
   ["/index.html", "index.html"],
   ["/controller.js", "controller.js"],
   ["/style.css", "style.css"],
+  ["/desktop.js", "desktop.js"],
+  ["/coast.png", "coast.png"],
   ["/media/big-buck-bunny.mp4", "media/big-buck-bunny.mp4"],
   ["/media/README.md", "media/README.md"],
 ]);
@@ -15,6 +17,7 @@ const types = {
   html: "text/html; charset=utf-8",
   js: "text/javascript; charset=utf-8",
   css: "text/css; charset=utf-8",
+  png: "image/png",
   mp4: "video/mp4",
   md: "text/plain; charset=utf-8",
 };

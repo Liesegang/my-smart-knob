@@ -14,6 +14,8 @@ test("local media serves full files, byte ranges, and HEAD without exposing othe
   const fixture = Buffer.from("0123456789abcdefghijklmnopqrstuvwxyz");
   await writeFile(join(directory, "media/big-buck-bunny.mp4"), fixture);
   await writeFile(join(directory, "index.html"), "<!doctype html><title>Demo</title>");
+  await writeFile(join(directory, "desktop.js"), "export const desktop = true;");
+  await writeFile(join(directory, "coast.png"), Buffer.from([137, 80, 78, 71]));
   await writeFile(join(directory, "private.txt"), "not public");
   const server = createServer(createRequestHandler(pathToFileURL(`${directory}/`)));
   t.after(async () => {
@@ -24,6 +26,14 @@ test("local media serves full files, byte ranges, and HEAD without exposing othe
   await once(server, "listening");
   const origin = `http://127.0.0.1:${server.address().port}`;
   const url = `${origin}/media/big-buck-bunny.mp4`;
+
+  const desktop = await fetch(`${origin}/desktop.js`);
+  assert.equal(desktop.status, 200);
+  assert.match(desktop.headers.get("content-type"), /^text\/javascript/);
+  assert.match(await desktop.text(), /export const desktop/);
+  const wallpaper = await fetch(`${origin}/coast.png`);
+  assert.equal(wallpaper.status, 200);
+  assert.equal(wallpaper.headers.get("content-type"), "image/png");
 
   const full = await fetch(url);
   assert.equal(full.status, 200);

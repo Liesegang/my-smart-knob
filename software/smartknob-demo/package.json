@@ -9,13 +9,15 @@
     "dev": "node dev.mjs"
   },
   "dependencies": {
-    "protobufjs": "^8.8.0"
+    "protobufjs": "^8.8.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "esbuild": "^0.25.10",
     "protobufjs-cli": "^2.7.0"
   },
-  "description": "Web Serial haptics playground and local video shuttle demo",
+  "description": "Web Serial haptics playground and virtual desktop demo",
   "engines": {
     "node": ">=20"
   }

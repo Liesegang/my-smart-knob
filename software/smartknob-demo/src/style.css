@@ -603,3 +603,11 @@ textarea {
 }
 .playback-actions #play { min-width: 96px; }
 .media-credit a { color: inherit; }
+
+/* The desktop fills the space below the shared demo navigation. */
+body.os-mode { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+body.os-mode > header { flex-shrink: 0; }
+body.os-mode > main { margin: 0; min-height: 0; flex: 1; position: relative; }
+body.os-mode #notice:not(:empty) { position: absolute; top: 12px; right: 16px; z-index: 6000; background: #fff; padding: 10px 16px; box-shadow: 0 4px 20px #18243c30; border-radius: 8px; }
+body.os-mode #notice:empty, body.os-mode footer { display: none; }
+#os, #desktop-host { width: 100%; height: 100%; }
