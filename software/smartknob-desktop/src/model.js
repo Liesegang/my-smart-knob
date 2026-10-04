@@ -3,6 +3,7 @@ import {
   ZOOM_LEVELS, INPUT_FIELDS, PRIORITY_LABELS,
 } from "./content.js";
 import { VIDEO_CHAPTERS, VIDEO_CHAPTER_SNAP_STRENGTH, VIDEO_FPS } from "./chapters.js";
+import { CLICK_STRENGTH, MAGNETIC_STRENGTH, MAGNETIC_WIDTH, EMPHASIZED_CLICK_STRENGTH } from "../../smartknob-demo/src/feel.js";
 
 export const APP_IDS = ["browser", "windows", "timer", "photo", "video", "music", "audio", "lights", "review", "reader", "map", "input"];
 export const APP_INFO = {
@@ -40,7 +41,7 @@ export function initialApps() {
     windows: { index: 0 },
     timer: { minutes: 25, running: false, remaining: 1500, deadline: null },
     photo: { parameter: "exposure", ...PHOTO_DEFAULTS },
-    video: { frame: 0, fps: VIDEO_FPS, duration: 634.599, mode: "fine", playing: false },
+    video: { frame: 0, fps: VIDEO_FPS, duration: 634.599, mode: "coarse", playing: false },
     music: { parameter: "rate", rate: 100, bpm: 96, playing: false },
     audio: { pan: 0, playing: false },
     lights: { parameter: "brightness", ...LIGHT_DEFAULTS, on: true },
@@ -238,12 +239,12 @@ export function reduceApps(apps, action) {
 export function getControl(apps, id) {
   if (!APP_IDS.includes(id)) throw new Error(`Unknown app: ${id}`);
   const s = apps[id];
-  const base = { key: id, label: APP_INFO[id].name, value: 0, min: 0, max: 1, width: 12, strength: 0.45, detents: [], favorites: [], valueText: "", hint: "回して選択", pressHint: "選択", longPressHint: "" };
+  const base = { key: id, label: APP_INFO[id].name, value: 0, min: 0, max: 1, width: 12, strength: CLICK_STRENGTH, detents: [], favorites: [], valueText: "", hint: "回して選択", pressHint: "選択", longPressHint: "" };
   let control;
   switch (id) {
     case "browser": control = { key: "browser:tab", label: "タブ", value: s.tabIndex, max: BROWSER_TABS.length - 1, width: 24, valueText: BROWSER_TABS[s.tabIndex].title, pressHint: "タブを開く", longPressHint: "開いているタブへ戻る" }; break;
     case "windows": control = { key: "windows:app", label: "アプリ", value: s.index, max: APP_IDS.length - 1, width: 18, favorites: ["photo", "timer", "music"].map((favorite) => APP_IDS.indexOf(favorite)), valueText: APP_INFO[APP_IDS[s.index]].name, pressHint: "アプリを開く" }; break;
-    case "timer": control = { key: "timer:minutes", label: "残り時間", value: Math.ceil(s.remaining / 60), min: 0, max: 120, width: 4, strength: 0.5, detents: Array.from({ length: 25 }, (_, i) => i * 5), valueText: `${Math.ceil(s.remaining / 60)} 分`, hint: "1目盛り1分 · 5分ごとに吸着", pressHint: s.running ? "一時停止" : "開始", longPressHint: "設定時間に戻す" }; break;
+    case "timer": control = { key: "timer:minutes", label: "残り時間", value: Math.ceil(s.remaining / 60), min: 0, max: 120, width: 4, strength: CLICK_STRENGTH, detents: Array.from({ length: 25 }, (_, i) => i * 5), valueText: `${Math.ceil(s.remaining / 60)} 分`, hint: "1目盛り1分 · 5分ごとに吸着", pressHint: s.running ? "一時停止" : "開始", longPressHint: "設定時間に戻す" }; break;
     case "photo": {
       const [min, max] = PHOTO_BOUNDS[s.parameter];
       const label = { exposure: "露出", saturation: "彩度", temperature: "色温度" }[s.parameter];
@@ -253,29 +254,50 @@ export function getControl(apps, id) {
     }
     case "video": {
       const fine = s.mode === "fine";
-      // Playback leaves the hardware's physical position independent of its
-      // moving playhead. Enable chapter strength only at an exact paused frame.
+      // Coarse seek preloads chapter magnets in the firmware, like the official
+      // timeline Scroll demo. It does not wait for a host round trip on arrival.
+      // Fine stepping retains a click on every frame; stronger chapter clicks
+      // there still require a host update at an exact, paused chapter frame.
       const atChapter = !s.playing && VIDEO_CHAPTERS.some((chapter) => chapter.frame === s.frame);
-      control = { key: `video:${s.mode}`, label: fine ? "フレーム" : "秒", value: fine ? s.frame : Math.floor(s.frame / VIDEO_FPS), max: fine ? VIDEO_LAST_FRAME : Math.floor(VIDEO_LAST_FRAME / VIDEO_FPS), width: fine ? 3 : 12, strength: fine ? 0.22 : 0.48, favorites: atChapter ? VIDEO_CHAPTERS.map((chapter) => fine ? chapter.frame : chapter.time) : [], favoriteStrength: VIDEO_CHAPTER_SNAP_STRENGTH, valueText: `${s.frame} f · ${(s.frame / s.fps).toFixed(2)} s`, hint: fine ? "1目盛り1フレーム · 章の先頭に強く吸着" : "1目盛り1秒 · 章の先頭に強く吸着", pressHint: fine ? "1秒単位に切替" : "1フレーム単位に切替", longPressHint: "先頭へ戻る" };
+      const lastSecond = Math.floor(VIDEO_LAST_FRAME / VIDEO_FPS);
+      control = {
+        key: `video:${s.mode}`, label: fine ? "フレーム" : "秒",
+        value: fine ? s.frame : Math.floor(s.frame / VIDEO_FPS),
+        max: fine ? VIDEO_LAST_FRAME : lastSecond,
+        width: fine ? 1.8 : MAGNETIC_WIDTH,
+        strength: fine ? CLICK_STRENGTH : VIDEO_CHAPTER_SNAP_STRENGTH,
+        detents: fine ? [] : [...VIDEO_CHAPTERS.map((chapter) => chapter.time), lastSecond],
+        favorites: fine && atChapter ? VIDEO_CHAPTERS.map((chapter) => chapter.frame) : [],
+        favoriteStrength: EMPHASIZED_CLICK_STRENGTH,
+        valueText: `${s.frame} f · ${(s.frame / s.fps).toFixed(2)} s`,
+        hint: fine ? "1フレームずつクリック · 章の先頭は強いクリック" : "1秒ずつシーク · 章の先頭に強く吸着",
+        pressHint: fine ? "1秒単位に切替" : "1フレーム単位に切替",
+        longPressHint: "先頭へ戻る",
+      };
       break;
     }
-    case "music": control = { key: `music:${s.parameter}`, label: s.parameter === "rate" ? "再生速度" : "テンポ", value: s[s.parameter], min: s.parameter === "rate" ? 50 : 40, max: s.parameter === "rate" ? 150 : 200, width: 5, strength: 0.4, detents: s.parameter === "rate" ? [100] : [], valueText: s.parameter === "rate" ? `${(s.rate / 100).toFixed(2)}×` : `${s.bpm} BPM`, hint: s.parameter === "rate" ? "1%ずつ調整 · 等速に吸着" : "1目盛り1 BPM", pressHint: s.playing ? "停止" : "再生", longPressHint: "標準値に戻す" }; break;
-    case "audio": control = { key: "audio:pan", label: "左右の定位", value: s.pan, min: -10, max: 10, width: 9, strength: 0.6, detents: [0], valueText: s.pan === 0 ? "中央" : `${s.pan < 0 ? "L" : "R"} ${Math.abs(s.pan) * 10}%`, hint: "左から右へ · 中央に吸着", pressHint: s.playing ? "試聴を停止" : "試聴", longPressHint: "中央に戻す" }; break;
+    case "music": control = { key: `music:${s.parameter}`, label: s.parameter === "rate" ? "再生速度" : "テンポ", value: s[s.parameter], min: s.parameter === "rate" ? 50 : 40, max: s.parameter === "rate" ? 150 : 200, width: 5, strength: CLICK_STRENGTH, detents: s.parameter === "rate" ? [100] : [], valueText: s.parameter === "rate" ? `${(s.rate / 100).toFixed(2)}×` : `${s.bpm} BPM`, hint: s.parameter === "rate" ? "1%ずつ調整 · 等速に吸着" : "1目盛り1 BPM", pressHint: s.playing ? "停止" : "再生", longPressHint: "標準値に戻す" }; break;
+    case "audio": control = { key: "audio:pan", label: "左右の定位", value: s.pan, min: -10, max: 10, width: 9, strength: CLICK_STRENGTH, detents: [0], valueText: s.pan === 0 ? "中央" : `${s.pan < 0 ? "L" : "R"} ${Math.abs(s.pan) * 10}%`, hint: "左から右へ · 中央に吸着", pressHint: s.playing ? "試聴を停止" : "試聴", longPressHint: "中央に戻す" }; break;
     case "lights": {
       const [min, max] = LIGHT_BOUNDS[s.parameter];
-      control = { key: `lights:${s.parameter}`, label: s.parameter === "brightness" ? "明るさ" : "色温度", value: s[s.parameter], min, max, width: 4, strength: 0.25, detents: [LIGHT_DEFAULTS[s.parameter]], valueText: s.parameter === "brightness" ? `${s.brightness}%` : `${s.temperature * 100} K`, hint: s.parameter === "brightness" ? "暗く ← → 明るく · 70%に吸着" : "暖かい ← → 白い · 4000 Kに吸着", pressHint: "調整項目を切替", longPressHint: "初期設定に戻す" };
+      control = { key: `lights:${s.parameter}`, label: s.parameter === "brightness" ? "明るさ" : "色温度", value: s[s.parameter], min, max, width: 4, strength: CLICK_STRENGTH, detents: [LIGHT_DEFAULTS[s.parameter]], valueText: s.parameter === "brightness" ? `${s.brightness}%` : `${s.temperature * 100} K`, hint: s.parameter === "brightness" ? "暗く ← → 明るく · 70%に吸着" : "暖かい ← → 白い · 4000 Kに吸着", pressHint: "調整項目を切替", longPressHint: "初期設定に戻す" };
       break;
     }
-    case "review": control = { key: `review:${s.file}`, label: "変更箇所", value: s.hunk, max: REVIEW_FILES[s.file].hunks.length - 1, width: 24, strength: 0.55, valueText: `${s.hunk + 1} / ${REVIEW_FILES[s.file].hunks.length}`, hint: "回して変更箇所を移動", pressHint: s.expanded.includes(`${s.file}:${s.hunk}`) ? "差分を閉じる" : "差分を開く", longPressHint: "次のファイル" }; break;
+    case "review": control = { key: `review:${s.file}`, label: "変更箇所", value: s.hunk, max: REVIEW_FILES[s.file].hunks.length - 1, width: 24, strength: CLICK_STRENGTH, valueText: `${s.hunk + 1} / ${REVIEW_FILES[s.file].hunks.length}`, hint: "回して変更箇所を移動", pressHint: s.expanded.includes(`${s.file}:${s.hunk}`) ? "差分を閉じる" : "差分を開く", longPressHint: "次のファイル" }; break;
     case "reader": control = { key: "reader:page", label: "ページ", value: s.page, max: READER_PAGES.length - 1, width: 24, favorites: READER_CHAPTERS.map((chapter) => chapter.page), valueText: `${s.page + 1} / ${READER_PAGES.length}`, hint: "1目盛り1ページ · 章の先頭は強いクリック", pressHint: "次の章", longPressHint: "前の章" }; break;
-    case "map": control = { key: "map:zoom", label: "拡大率", value: s.zoom, max: ZOOM_LEVELS.length - 1, width: 18, strength: 0.5, favorites: [3], valueText: `${ZOOM_LEVELS[s.zoom]}%`, hint: "回して拡大・縮小 · 100%は強いクリック", pressHint: "100%に戻す", longPressHint: "100%に戻す" }; break;
+    case "map": control = { key: "map:zoom", label: "拡大率", value: s.zoom, max: ZOOM_LEVELS.length - 1, width: 18, strength: CLICK_STRENGTH, favorites: [3], valueText: `${ZOOM_LEVELS[s.zoom]}%`, hint: "回して拡大・縮小 · 100%は強いクリック", pressHint: "100%に戻す", longPressHint: "100%に戻す" }; break;
     case "input": {
       const [min, max] = inputBounds[s.field];
-      control = { key: `input:${s.field}`, label: { rating: "評価", priority: "優先度", quantity: "数量" }[s.field], value: s[s.field], min, max, width: s.field === "quantity" ? 15 : 30, strength: 0.6, valueText: s.field === "rating" ? `${s.rating} / 5` : s.field === "priority" ? PRIORITY_LABELS[s.priority] : `${s.quantity} 個`, hint: "回して選択 · 押して確定", pressHint: "確定して次の項目", longPressHint: "入力を初期化" };
+      control = { key: `input:${s.field}`, label: { rating: "評価", priority: "優先度", quantity: "数量" }[s.field], value: s[s.field], min, max, width: s.field === "quantity" ? 15 : 30, strength: CLICK_STRENGTH, valueText: s.field === "rating" ? `${s.rating} / 5` : s.field === "priority" ? PRIORITY_LABELS[s.priority] : `${s.quantity} 個`, hint: "回して選択 · 押して確定", pressHint: "確定して次の項目", longPressHint: "入力を初期化" };
       break;
     }
   }
-  return { ...base, ...control };
+  const result = { ...base, ...control };
+  // Sparse detents have no firmware D term: use the official timeline gain and
+  // angular capture width for all magnetic controls, including standard values.
+  return result.detents.length
+    ? { ...result, strength: MAGNETIC_STRENGTH, width: MAGNETIC_WIDTH }
+    : result;
 }
 
 export function getAppValue(apps, id) {

@@ -12,5 +12,5 @@ export const VIDEO_CHAPTERS = [
   { time: 540, label: "エンドクレジット" },
 ].map((chapter) => ({ ...chapter, frame: chapter.time * VIDEO_FPS }));
 
-// Stronger than the original video's 0.6, within the firmware's 0..1 range.
-export const VIDEO_CHAPTER_SNAP_STRENGTH = 0.95;
+// Same sparse-detent gain as the official timeline Scroll demo.
+export { MAGNETIC_STRENGTH as VIDEO_CHAPTER_SNAP_STRENGTH } from "../../smartknob-demo/src/feel.js";

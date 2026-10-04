@@ -1,3 +1,5 @@
+import { MAGNETIC_STRENGTH, MAGNETIC_SNAP, CLICK_SNAP, EMPHASIZED_CLICK_STRENGTH } from "../../smartknob-demo/src/feel.js";
+
 const INT_MIN = -2147483648;
 const INT_MAX = 2147483647;
 const noop = () => {};
@@ -10,21 +12,23 @@ function normalize(control) {
     if (!finiteInteger(control[field])) throw new RangeError(`Knob ${field} must fit int32.`);
   if (!Number.isFinite(control.width) || control.width <= 0 || control.width > 360)
     throw new RangeError("Knob width must be between 0 and 360 degrees.");
-  if (!Number.isFinite(control.strength) || control.strength < 0 || control.strength > 1)
-    throw new RangeError("Knob strength must be between 0 and 1.");
-  const favoriteStrength = control.favoriteStrength ?? 0.85;
-  if (!Number.isFinite(favoriteStrength) || favoriteStrength < 0 || favoriteStrength > 1)
-    throw new RangeError("Knob favorite strength must be between 0 and 1.");
+  const favoriteStrength = control.favoriteStrength ?? EMPHASIZED_CLICK_STRENGTH;
+  if (!Number.isFinite(favoriteStrength) || favoriteStrength < 0 || favoriteStrength > EMPHASIZED_CLICK_STRENGTH)
+    throw new RangeError("Knob favorite strength must be between 0 and 2.");
   const bounded = control.min <= control.max;
   const positions = (values = []) => {
     if (!Array.isArray(values) || values.some((value) => !finiteInteger(value)))
       throw new RangeError("Knob detent positions must fit int32.");
     return [...new Set(values)].filter((value) => !bounded || (value >= control.min && value <= control.max));
   };
+  const detents = positions(control.detents);
+  const maxStrength = detents.length ? MAGNETIC_STRENGTH : EMPHASIZED_CLICK_STRENGTH;
+  if (!Number.isFinite(control.strength) || control.strength < 0 || control.strength > maxStrength)
+    throw new RangeError(`Knob strength must be between 0 and ${maxStrength}.`);
   return {
     ...control,
     value: bounded ? Math.max(control.min, Math.min(control.max, control.value)) : control.value,
-    detents: positions(control.detents),
+    detents,
     favorites: positions(control.favorites),
     favoriteStrength,
   };
@@ -203,8 +207,8 @@ export class KnobBridge {
       detentStrengthUnit: !magnetic && control.favorites.includes(position)
         ? Math.max(control.strength, control.favoriteStrength)
         : control.strength,
-      endstopStrengthUnit: 0.65,
-      snapPoint: 0.7,
+      endstopStrengthUnit: 1,
+      snapPoint: magnetic ? MAGNETIC_SNAP : CLICK_SNAP,
       snapPointBias: 0,
       detentPositions: magnetic ? nearest(control.detents, position) : [],
       ledHue: 150,

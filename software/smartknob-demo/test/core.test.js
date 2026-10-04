@@ -82,7 +82,7 @@ test("eight themes and variants fit firmware limits and provide distinct configu
       const c = presetConfig(preset, 300, variant);
       assert.equal(c.positionNonce, 44);
       assert.ok(c.detentPositions.length <= 5);
-      assert.ok(c.detentStrengthUnit >= 0 && c.detentStrengthUnit <= 1);
+      assert.ok(c.detentStrengthUnit >= 0 && c.detentStrengthUnit <= (c.detentPositions.length ? 10 : 1));
       assert.ok(c.endstopStrengthUnit >= 0 && c.endstopStrengthUnit <= 1);
     }
   const toggle = presetConfig(
@@ -146,7 +146,7 @@ test("force compares the same angular error on one shared firmware P scale", () 
   const fine = presetConfig(presets.find((p) => p.id === "fine"), 1);
   // Both have a 1° dead zone and the same strength. A 2° displacement
   // must give the same force despite their different step widths.
-  const expected = -(Math.PI / 180) * 0.65 * 4 / 10;
+  const expected = -(Math.PI / 180) * 1 * 4 / 10;
   assert.ok(Math.abs(forceAt(2 / 30, 0, coarse) - expected) < 1e-12);
   assert.ok(Math.abs(forceAt(2 / 6, 0, fine) - expected) < 1e-12);
   const coarseStep = waveAngle(1, coarse) - waveAngle(0, coarse);
@@ -158,7 +158,7 @@ test("endstop strength remains comparable without preset-specific rescaling", ()
   const soft = presetConfig(preset, 1, 0);
   const hard = presetConfig(preset, 1, 1);
   assert.deepEqual(waveDomain(soft), waveDomain(hard));
-  assert.ok(Math.abs(forceAt(-0.5, 0, hard) / forceAt(-0.5, 0, soft) - 0.9 / 0.35) < 1e-12);
+  assert.ok(Math.abs(forceAt(-0.5, 0, hard) / forceAt(-0.5, 0, soft) - 1 / 0.35) < 1e-12);
 });
 function fakeVideo() {
   return {

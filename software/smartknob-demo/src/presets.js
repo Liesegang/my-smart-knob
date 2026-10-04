@@ -1,5 +1,5 @@
-// Themes adapted from firmware/src/interface_task.cpp. Strengths stay within
-// the [0, 1] range recommended by proto/smartknob.proto.
+import { CLICK_STRENGTH, MAGNETIC_STRENGTH, MAGNETIC_WIDTH } from "./feel.js";
+// Themes adapted from firmware/src/interface_task.cpp and the official timeline.
 export const presets = [
   {
     id: "free",
@@ -24,7 +24,7 @@ export const presets = [
     description:
       "大きな山をひとつ越えるたび、次の位置へ。12個の項目を選ぶような感触です。「細かい」と同じ強さで、間隔の違いを比べられます。",
     width: 30,
-    strength: 0.65,
+    strength: CLICK_STRENGTH,
     min: 0,
     max: -1,
     ticks: 12,
@@ -39,7 +39,7 @@ export const presets = [
     description:
       "小さなクリックが連続する精密な操作感。「粗い」と強さの設定を揃え、ステップの間隔を5分の1にしています。",
     width: 6,
-    strength: 0.65,
+    strength: CLICK_STRENGTH,
     min: 0,
     max: -1,
     ticks: 60,
@@ -71,7 +71,7 @@ export const presets = [
     description:
       "OFFとON、ふたつの安定点。中間を越えると次の位置へ吸い寄せられる、物理スイッチの感触です。",
     width: 60,
-    strength: 0.8,
+    strength: CLICK_STRENGTH,
     snap: 0.55,
     min: 0,
     max: 1,
@@ -103,7 +103,7 @@ export const presets = [
     description:
       "微細で強めのディテントによる近似です。本当の粘性ではなく、実機では「ざらざら」に感じる場合もあります。感触を確かめる実験枠です。",
     width: 2,
-    strength: 0.8,
+    strength: CLICK_STRENGTH,
     min: 0,
     max: -1,
     ticks: 90,
@@ -117,8 +117,8 @@ export const presets = [
     tag: "なめらかな道に、吸着点。",
     description:
       "特定の場所だけに、ぴたっと吸着。等間隔と不規則な並びで、目印の配置が手応えをどう変えるか比べてください。",
-    width: 10,
-    strength: 1.0,
+    width: MAGNETIC_WIDTH,
+    strength: MAGNETIC_STRENGTH,
     snap: 0.7,
     min: 0,
     max: 36,
@@ -139,22 +139,22 @@ export function presetConfig(preset, nonce, variant = 0) {
     maxPosition: preset.max,
     positionWidthRadians: (preset.width * Math.PI) / 180,
     detentStrengthUnit: preset.strength,
-    endstopStrengthUnit: 0.7,
+    endstopStrengthUnit: 1,
     snapPoint: preset.snap || 1.1,
     snapPointBias: 0,
     detentPositions: [...(preset.detents || [])],
     text: `studio:${preset.id}:${nonce}`,
     ledHue: 20,
   };
-  if (preset.id === "limit") config.endstopStrengthUnit = variant ? 0.9 : 0.35;
+  if (preset.id === "limit") config.endstopStrengthUnit = variant ? 1 : 0.35;
   if (preset.id === "spring") {
-    config.endstopStrengthUnit = 0.5;
+    config.endstopStrengthUnit = 0.6;
     if (variant)
       Object.assign(config, {
         minPosition: -6,
         maxPosition: 6,
         positionWidthRadians: Math.PI / 6,
-        detentStrengthUnit: 0.7,
+        detentStrengthUnit: CLICK_STRENGTH,
         snapPoint: 0.55,
         snapPointBias: 0.4,
       });

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { KnobBridge } from "../src/knob.js";
 import { getControl, initialApps, reduceApps } from "../src/model.js";
-import { VIDEO_CHAPTERS, VIDEO_CHAPTER_SNAP_STRENGTH } from "../src/chapters.js";
+import { VIDEO_CHAPTERS } from "../src/chapters.js";
 
 const basic = (changes = {}) => ({
   key: "audio:volume", value: 4, min: 0, max: 100,
@@ -81,7 +81,7 @@ test("favorite strength retains ordinary clicks and never reanchors a rotating k
   const original = anchorFields(bridge.config);
   connection.emit(10);
   assert.deepEqual(rotations, [10]);
-  assert.equal(bridge.config.detentStrengthUnit, 0.85);
+  assert.equal(bridge.config.detentStrengthUnit, 2);
   assert.deepEqual(bridge.config.detentPositions, []);
   assert.deepEqual(anchorFields(bridge.config), original);
   const messages = connection.sent.length;
@@ -97,58 +97,76 @@ test("favorite strength retains ordinary clicks and never reanchors a rotating k
   await bridge.close();
 });
 
-test("video chapter entry strengthens ordinary clicks without sparse magnetic mode or reanchoring", async () => {
+test("coarse chapters are armed before arrival without a host response at the boundary", async () => {
   const chapter = VIDEO_CHAPTERS.find((entry) => entry.time === 83);
-  for (const mode of ["fine", "coarse"]) {
-    for (const direction of [-1, 1]) {
-      let apps = initialApps();
-      apps.video = { ...apps.video, mode, frame: chapter.frame - direction * (mode === "fine" ? 1 : 30) + (mode === "fine" ? 0 : 17) };
-      const control = getControl(apps, "video");
-      const { bridge, connection } = await connected(control);
-      const anchor = anchorFields(bridge.config);
-      bridge.onRotate = (position) => {
-        const delta = position - getControl(apps, "video").value;
-        apps = reduceApps(apps, { type: "turn", app: "video", delta });
-        bridge.sync(getControl(apps, "video"));
-      };
-      assert.equal(bridge.config.detentStrengthUnit, control.strength);
-      const chapterPosition = mode === "fine" ? chapter.frame : chapter.time;
-      connection.emit(chapterPosition);
-      assert.equal(apps.video.frame, chapter.frame);
-      assert.equal(bridge.config.detentStrengthUnit, VIDEO_CHAPTER_SNAP_STRENGTH);
-      assert.deepEqual(bridge.config.detentPositions, []);
-      assert.deepEqual(anchorFields(bridge.config), anchor);
-      connection.emit(chapterPosition + direction);
-      assert.equal(bridge.config.detentStrengthUnit, control.strength);
-      assert.deepEqual(bridge.config.detentPositions, []);
-      assert.deepEqual(anchorFields(bridge.config), anchor);
-      await bridge.close();
-    }
+  for (const direction of [-1, 1]) {
+    const apps = initialApps();
+    apps.video.frame = chapter.frame - direction * 30;
+    const { bridge, connection, rotations } = await connected(getControl(apps, "video"));
+    const anchor = anchorFields(bridge.config);
+    assert.equal(bridge.config.detentStrengthUnit, 10);
+    assert.ok(Math.abs(bridge.config.positionWidthRadians - 8 * Math.PI / 180) < 1e-12);
+    assert.equal(bridge.config.snapPoint, 0.7);
+    assert.equal(bridge.config.endstopStrengthUnit, 1);
+    assert.ok(bridge.config.detentPositions.includes(chapter.time));
+    const messages = connection.sent.length;
+    connection.emit(chapter.time);
+    assert.deepEqual(rotations, [chapter.time]);
+    assert.equal(connection.sent.length, messages, "chapter arrival needs no new gain message");
+    assert.deepEqual(anchorFields(bridge.config), anchor);
+    connection.emit(450);
+    assert.deepEqual(bridge.config.detentPositions, [296, 360, 450, 540, 634]);
+    assert.deepEqual(anchorFields(bridge.config), anchor);
+    await bridge.close();
   }
 });
 
-test("off-chapter coarse playback never boosts an old chapter position on the physical knob", async () => {
+test("fine chapter entry strengthens each-frame clicks without reanchoring", async () => {
   const chapter = VIDEO_CHAPTERS.find((entry) => entry.time === 83);
-  let apps = initialApps();
-  apps.video = { ...apps.video, mode: "coarse", frame: chapter.frame };
-  const { bridge } = await connected(getControl(apps, "video"));
-  const anchor = anchorFields(bridge.config);
-  assert.equal(bridge.config.detentStrengthUnit, VIDEO_CHAPTER_SNAP_STRENGTH);
-  apps = reduceApps(apps, { type: "set", app: "video", key: "playing", value: true });
-  bridge.sync(getControl(apps, "video"));
-  assert.equal(bridge.config.detentStrengthUnit, 0.48);
-  for (const frame of [chapter.frame + 1, chapter.frame + 17, VIDEO_CHAPTERS[3].frame]) {
-    apps = reduceApps(apps, { type: "set", app: "video", key: "frame", value: frame });
-    bridge.sync(getControl(apps, "video"));
-    assert.equal(bridge.config.detentStrengthUnit, 0.48);
+  for (const direction of [-1, 1]) {
+    let apps = initialApps();
+    apps.video = { ...apps.video, mode: "fine", frame: chapter.frame - direction };
+    const { bridge, connection } = await connected(getControl(apps, "video"));
+    const anchor = anchorFields(bridge.config);
+    bridge.onRotate = (position) => {
+      apps = reduceApps(apps, { type: "turn", app: "video", delta: position - getControl(apps, "video").value });
+      bridge.sync(getControl(apps, "video"));
+    };
+    assert.equal(bridge.config.detentStrengthUnit, 1);
+    assert.equal(bridge.config.snapPoint, 1.1);
+    connection.emit(chapter.frame);
+    assert.equal(apps.video.frame, chapter.frame);
+    assert.equal(bridge.config.detentStrengthUnit, 2);
+    assert.deepEqual(bridge.config.detentPositions, []);
     assert.deepEqual(anchorFields(bridge.config), anchor);
+    connection.emit(chapter.frame + direction);
+    assert.equal(bridge.config.detentStrengthUnit, 1);
+    assert.deepEqual(anchorFields(bridge.config), anchor);
+    await bridge.close();
   }
-  apps = reduceApps(apps, { type: "set", app: "video", key: "frame", value: chapter.frame + 17 });
-  apps = reduceApps(apps, { type: "set", app: "video", key: "playing", value: false });
-  bridge.sync(getControl(apps, "video"));
-  assert.equal(bridge.config.detentStrengthUnit, 0.48, "stopping in the chapter's second must not imply an exact chapter landing");
-  assert.deepEqual(bridge.config.detentPositions, []);
-  await bridge.close();
+});
+
+test("playback does not move preloaded magnets or boost an old frame-mode chapter", async () => {
+  const chapter = VIDEO_CHAPTERS.find((entry) => entry.time === 83);
+  for (const mode of ["coarse", "fine"]) {
+    let apps = initialApps();
+    apps.video = { ...apps.video, mode, frame: chapter.frame };
+    const { bridge, connection } = await connected(getControl(apps, "video"));
+    const anchor = anchorFields(bridge.config);
+    const magnets = [...bridge.config.detentPositions];
+    apps = reduceApps(apps, { type: "set", app: "video", key: "playing", value: true });
+    bridge.sync(getControl(apps, "video"));
+    const messages = connection.sent.length;
+    for (const frame of [chapter.frame + 1, chapter.frame + 17, VIDEO_CHAPTERS[3].frame]) {
+      apps = reduceApps(apps, { type: "set", app: "video", key: "frame", value: frame });
+      bridge.sync(getControl(apps, "video"));
+      assert.equal(bridge.config.detentStrengthUnit, mode === "coarse" ? 10 : 1);
+      assert.deepEqual(bridge.config.detentPositions, magnets);
+      assert.deepEqual(anchorFields(bridge.config), anchor);
+      assert.equal(connection.sent.length, messages);
+    }
+    await bridge.close();
+  }
 });
 
 test("magnetic mode tracks the nearest five bounded unique detents without resetting position", async () => {
@@ -262,7 +280,7 @@ test("unsupported USB, cancelled selection and invalid configs produce explicit 
   assert.equal(await cancelled.bridge.connect(), false);
   assert.equal(cancelled.bridge.phase, "disconnected");
   assert.deepEqual(cancelled.errors, []);
-  for (const invalid of [{ value: 2 ** 31 }, { min: -Infinity }, { width: 0 }, { strength: 1.1 }, { favoriteStrength: 1.01 }, { favoriteStrength: -0.1 }, { favoriteStrength: NaN }, { detents: [0.5] }])
+  for (const invalid of [{ value: 2 ** 31 }, { min: -Infinity }, { width: 0 }, { strength: 2.01 }, { strength: 10 }, { strength: 10, detents: [101] }, { strength: 10.01, detents: [10] }, { strength: NaN }, { favoriteStrength: 2.01 }, { favoriteStrength: -0.1 }, { favoriteStrength: NaN }, { detents: [0.5] }])
     assert.throws(() => unsupported.sync(basic(invalid)), RangeError);
   unsupported.sync(basic({ key: "video:frame", value: 19037, max: 19037 }));
   assert.equal(unsupported.config.position, 19037);

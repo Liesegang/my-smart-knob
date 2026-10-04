@@ -4,7 +4,6 @@ import { APP_IDS, APP_INFO, initialApps, reduceApps, getControl, getAppValue } f
 import { BROWSER_TABS, REVIEW_FILES, READER_PAGES, READER_CHAPTERS, ZOOM_LEVELS } from "../src/content.js";
 import { VIDEO_CHAPTERS, VIDEO_CHAPTER_SNAP_STRENGTH, VIDEO_FPS } from "../src/chapters.js";
 import { DEMO } from "../../smartknob-demo/src/player.js";
-import { VideoControl } from "../../smartknob-demo/src/video.js";
 
 const send = (apps, app, type, fields = {}) => reduceApps(apps, { app, type, now: 1000, ...fields });
 const set = (apps, app, key, value) => send(apps, app, "set", { key, value });
@@ -24,7 +23,7 @@ test("twelve independent app states have bounded controls and immutable transiti
     ...APP_IDS.map((app) => [app, null, null]),
     ["photo", "parameter", "saturation"],
     ["photo", "parameter", "temperature"],
-    ["video", "mode", "coarse"],
+    ["video", "mode", "fine"],
     ["music", "parameter", "bpm"],
     ["lights", "parameter", "temperature"],
     ["review", "file", 1],
@@ -39,7 +38,7 @@ test("twelve independent app states have bounded controls and immutable transiti
     assert.equal(getAppValue(apps, app), control.value);
     assert.ok(control.min <= control.value && control.value <= control.max, app);
     assert.ok(Number.isInteger(control.value), app);
-    assert.ok(control.width > 0 && control.strength >= 0 && control.strength <= 1, app);
+    assert.ok(control.width > 0 && control.strength >= 0 && control.strength <= (control.detents.length ? 10 : 2), app);
     const upper = send(apps, app, "turn", { delta: 100000 });
     assert.equal(getControl(upper, app).value, control.max, app);
     const lower = send(apps, app, "turn", { delta: -100000 });
@@ -168,7 +167,8 @@ test("timer control follows remaining minutes down to zero and rotations use tha
 });
 
 test("video press switches frame resolution without changing time or toggling playback", () => {
-  let apps = set(initialApps(), "video", "frame", 77);
+  let apps = set(initialApps(), "video", "mode", "fine");
+  apps = set(apps, "video", "frame", 77);
   apps = set(apps, "video", "playing", true);
   const fine = getControl(apps, "video");
   apps = send(apps, "video", "press");
@@ -188,25 +188,28 @@ test("video press switches frame resolution without changing time or toggling pl
   assert.equal(apps.video.frame, 0);
 });
 
-test("video chapters reuse the demo landmarks with stronger exact-frame favorites in both modes", () => {
+test("video seek preloads chapter magnets while frame mode retains individual clicks", () => {
   assert.deepEqual(VIDEO_CHAPTERS.map(({ time, label }) => ({ time, label })), DEMO.scenes);
-  assert.ok(VIDEO_CHAPTER_SNAP_STRENGTH > new VideoControl(null, null, null).strength);
-  assert.ok(VIDEO_CHAPTER_SNAP_STRENGTH <= 1);
+  assert.equal(initialApps().video.mode, "coarse");
+  assert.equal(VIDEO_CHAPTER_SNAP_STRENGTH, 10);
   for (const chapter of VIDEO_CHAPTERS) {
     assert.equal(chapter.frame, chapter.time * VIDEO_FPS);
-    for (const mode of ["fine", "coarse"]) {
-      let apps = set(initialApps(), "video", "mode", mode);
-      apps = set(apps, "video", "frame", chapter.frame);
-      const control = getControl(apps, "video");
-      assert.ok(control.favorites.includes(control.value));
-      assert.deepEqual(control.detents, [], "sparse detents would disable the ordinary frame/second clicks");
-      assert.equal(control.favoriteStrength, VIDEO_CHAPTER_SNAP_STRENGTH);
-      apps = set(apps, "video", "frame", chapter.frame + 1);
-      assert.deepEqual(getControl(apps, "video").favorites, [], "a coarse chapter second is not necessarily the chapter frame");
-      apps = set(apps, "video", "frame", chapter.frame);
-      apps = set(apps, "video", "playing", true);
-      assert.deepEqual(getControl(apps, "video").favorites, [], "playback must not strengthen an unrelated physical knob position");
-    }
+    let apps = set(initialApps(), "video", "frame", chapter.frame + 1);
+    const seek = getControl(apps, "video");
+    assert.ok(seek.detents.includes(chapter.time), "chapter magnets must be armed before exact frame arrival");
+    assert.ok(seek.detents.includes(seek.max), "the end of the video is a magnetic boundary too");
+    assert.equal(seek.strength, 10);
+    assert.equal(seek.width, 8);
+    apps = set(apps, "video", "mode", "fine");
+    assert.deepEqual(getControl(apps, "video").detents, []);
+    assert.deepEqual(getControl(apps, "video").favorites, []);
+    apps = set(apps, "video", "frame", chapter.frame);
+    const fine = getControl(apps, "video");
+    assert.ok(fine.favorites.includes(fine.value));
+    assert.equal(fine.strength, 1);
+    assert.equal(fine.favoriteStrength, 2);
+    apps = set(apps, "video", "playing", true);
+    assert.deepEqual(getControl(apps, "video").favorites, [], "playback must not strengthen an unrelated physical frame position");
   }
 });
 
@@ -218,7 +221,7 @@ test("coarse turns land on exact chapter frames even when the previous frame has
       apps = send(apps, "video", "turn", { delta: direction });
       assert.equal(apps.video.frame, chapter.frame, `${chapter.label}, direction ${direction}`);
       assert.equal(getControl(apps, "video").value, chapter.time);
-      assert.ok(getControl(apps, "video").favorites.includes(chapter.time));
+      assert.ok(getControl(apps, "video").detents.includes(chapter.time));
       apps = send(apps, "video", "turn", { delta: direction });
       assert.equal(apps.video.frame, chapter.frame + direction * VIDEO_FPS);
       assert.deepEqual(getControl(apps, "video").favorites, []);
