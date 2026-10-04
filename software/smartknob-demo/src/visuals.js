@@ -48,7 +48,7 @@ export function renderDial(element, preset, config, value) {
   element.innerHTML = `${ticks}<circle cx="220" cy="220" r="155" fill="${on ? "#f2e3d9" : "none"}" stroke="#161715" stroke-width="2"/><circle cx="220" cy="220" r="150" fill="none" stroke="#b0b1a8" stroke-width="1"/>${needle}<circle cx="${dot[0]}" cy="${dot[1]}" r="${preset.id === "free" ? 5 : 0}" fill="#e75c32"/><text x="220" y="243" text-anchor="middle" fill="#161715" font-size="${display.length > 5 ? 44 : 66}" font-weight="400">${display}</text>${spring}`;
   element.setAttribute("aria-label", `${preset.name}: ${display}`);
 }
-const wavePlot = { left: 32, top: 20, width: 312, height: 100 };
+const wavePlot = { left: 32, top: 20, width: 312, height: 200 };
 const waveX = (angle) => wavePlot.left +
   (angle - waveAxes.minAngle) / (waveAxes.maxAngle - waveAxes.minAngle) * wavePlot.width;
 const waveY = (force) => wavePlot.top +
@@ -59,14 +59,14 @@ export function renderWave(element, preset, config) {
   const points = (samples) =>
     samples.map((p) => `${waveX(waveAngle(p.value, config))},${waveY(p.force)}`).join(" ");
   const angleTicks = [-240, -120, 0, 120, 240];
-  const forceTicks = [-1, -0.5, 0, 0.5, 1];
+  const forceTicks = [waveAxes.minForce, waveAxes.minForce / 2, 0, waveAxes.maxForce / 2, waveAxes.maxForce];
   element.innerHTML = `
     <defs><clipPath id="wave-plot-clip"><rect x="${wavePlot.left}" y="${wavePlot.top}" width="${wavePlot.width}" height="${wavePlot.height}"/></clipPath></defs>
     <g class="wave-axes" fill="#62655b" font-size="10">
       <text x="${wavePlot.left}" y="10">復元力（相対値）</text>
       ${forceTicks.map((force) => `<line x1="${wavePlot.left}" y1="${waveY(force)}" x2="${wavePlot.left + wavePlot.width}" y2="${waveY(force)}" stroke="#c9cbc0" ${force === 0 ? "" : 'stroke-dasharray="3 4"'}/><text x="24" y="${waveY(force) + 3}" text-anchor="end">${force > 0 ? "+" : ""}${force}</text>`).join("")}
-      ${angleTicks.map((angle) => `<line x1="${waveX(angle)}" y1="${wavePlot.top}" x2="${waveX(angle)}" y2="${wavePlot.top + wavePlot.height}" stroke="#c9cbc0" stroke-dasharray="3 4"/><text x="${waveX(angle)}" y="136" text-anchor="middle">${angle > 0 ? "+" : ""}${angle}°</text>`).join("")}
-      <text x="${wavePlot.left + wavePlot.width / 2}" y="154" text-anchor="middle">角度（中心 = 0°）</text>
+      ${angleTicks.map((angle) => `<line x1="${waveX(angle)}" y1="${wavePlot.top}" x2="${waveX(angle)}" y2="${wavePlot.top + wavePlot.height}" stroke="#c9cbc0" stroke-dasharray="3 4"/><text x="${waveX(angle)}" y="${wavePlot.top + wavePlot.height + 16}" text-anchor="middle">${angle > 0 ? "+" : ""}${angle}°</text>`).join("")}
+      <text x="${wavePlot.left + wavePlot.width / 2}" y="${wavePlot.top + wavePlot.height + 34}" text-anchor="middle">角度（中心 = 0°）</text>
     </g>
     <g clip-path="url(#wave-plot-clip)">
       <polyline points="${points(reverse)}" fill="none" stroke="#487781" stroke-width="1.5" stroke-dasharray="5 3"/>
@@ -87,6 +87,6 @@ export function updateWaveCursor(element, config, value, position) {
   }
   element.setAttribute(
     "aria-label",
-    `抵抗の概念図。横軸 −240°〜+240°、縦軸 −1〜+1。往路は橙の実線、復路は青の破線。現在の角度 ${angle.toFixed(1)}°`,
+    `抵抗の概念図。横軸 ${waveAxes.minAngle}°〜+${waveAxes.maxAngle}°、縦軸 ${waveAxes.minForce}〜+${waveAxes.maxForce}。往路は橙の実線、復路は青の破線。現在の角度 ${angle.toFixed(1)}°`,
   );
 }

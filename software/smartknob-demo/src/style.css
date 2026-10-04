@@ -214,7 +214,7 @@ p {
 #wave {
   width: 100%;
   height: auto;
-  aspect-ratio: 360 / 160;
+  aspect-ratio: 360 / 260;
   display: block;
   margin-top: 8px;
 }

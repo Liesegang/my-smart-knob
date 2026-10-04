@@ -12,5 +12,5 @@ export const VIDEO_CHAPTERS = [
   { time: 540, label: "エンドクレジット" },
 ].map((chapter) => ({ ...chapter, frame: chapter.time * VIDEO_FPS }));
 
-// Same sparse-detent gain as the official timeline Scroll demo.
+// Shared magnetic gain, reduced from the official timeline to avoid oscillation.
 export { MAGNETIC_STRENGTH as VIDEO_CHAPTER_SNAP_STRENGTH } from "../../smartknob-demo/src/feel.js";

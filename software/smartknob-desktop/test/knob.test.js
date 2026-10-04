@@ -104,7 +104,7 @@ test("coarse chapters are armed before arrival without a host response at the bo
     apps.video.frame = chapter.frame - direction * 30;
     const { bridge, connection, rotations } = await connected(getControl(apps, "video"));
     const anchor = anchorFields(bridge.config);
-    assert.equal(bridge.config.detentStrengthUnit, 10);
+    assert.equal(bridge.config.detentStrengthUnit, 5);
     assert.ok(Math.abs(bridge.config.positionWidthRadians - 8 * Math.PI / 180) < 1e-12);
     assert.equal(bridge.config.snapPoint, 0.7);
     assert.equal(bridge.config.endstopStrengthUnit, 1);
@@ -160,7 +160,7 @@ test("playback does not move preloaded magnets or boost an old frame-mode chapte
     for (const frame of [chapter.frame + 1, chapter.frame + 17, VIDEO_CHAPTERS[3].frame]) {
       apps = reduceApps(apps, { type: "set", app: "video", key: "frame", value: frame });
       bridge.sync(getControl(apps, "video"));
-      assert.equal(bridge.config.detentStrengthUnit, mode === "coarse" ? 10 : 1);
+      assert.equal(bridge.config.detentStrengthUnit, mode === "coarse" ? 5 : 1);
       assert.deepEqual(bridge.config.detentPositions, magnets);
       assert.deepEqual(anchorFields(bridge.config), anchor);
       assert.equal(connection.sent.length, messages);
@@ -280,7 +280,7 @@ test("unsupported USB, cancelled selection and invalid configs produce explicit 
   assert.equal(await cancelled.bridge.connect(), false);
   assert.equal(cancelled.bridge.phase, "disconnected");
   assert.deepEqual(cancelled.errors, []);
-  for (const invalid of [{ value: 2 ** 31 }, { min: -Infinity }, { width: 0 }, { strength: 2.01 }, { strength: 10 }, { strength: 10, detents: [101] }, { strength: 10.01, detents: [10] }, { strength: NaN }, { favoriteStrength: 2.01 }, { favoriteStrength: -0.1 }, { favoriteStrength: NaN }, { detents: [0.5] }])
+  for (const invalid of [{ value: 2 ** 31 }, { min: -Infinity }, { width: 0 }, { strength: 2.01 }, { strength: 10 }, { strength: 10, detents: [101] }, { strength: 5.01, detents: [10] }, { strength: NaN }, { favoriteStrength: 2.01 }, { favoriteStrength: -0.1 }, { favoriteStrength: NaN }, { detents: [0.5] }])
     assert.throws(() => unsupported.sync(basic(invalid)), RangeError);
   unsupported.sync(basic({ key: "video:frame", value: 19037, max: 19037 }));
   assert.equal(unsupported.config.position, 19037);

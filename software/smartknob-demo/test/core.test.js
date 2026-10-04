@@ -82,7 +82,7 @@ test("eight themes and variants fit firmware limits and provide distinct configu
       const c = presetConfig(preset, 300, variant);
       assert.equal(c.positionNonce, 44);
       assert.ok(c.detentPositions.length <= 5);
-      assert.ok(c.detentStrengthUnit >= 0 && c.detentStrengthUnit <= (c.detentPositions.length ? 10 : 1));
+      assert.ok(c.detentStrengthUnit >= 0 && c.detentStrengthUnit <= (c.detentPositions.length ? 5 : 1));
       assert.ok(c.endstopStrengthUnit >= 0 && c.endstopStrengthUnit <= 1);
     }
   const toggle = presetConfig(
@@ -152,6 +152,12 @@ test("force compares the same angular error on one shared firmware P scale", () 
   const coarseStep = waveAngle(1, coarse) - waveAngle(0, coarse);
   const fineStep = waveAngle(1, fine) - waveAngle(0, fine);
   assert.ok(Math.abs(coarseStep / fineStep - 5) < 1e-12);
+});
+test("chart zoom does not change the modeled firmware output limit", () => {
+  const spring = presetConfig(presets.find((p) => p.id === "spring"), 1);
+  assert.ok(Math.abs(forceAt(2, 0, spring)) > waveAxes.maxForce);
+  assert.equal(forceAt(100, 0, spring), -1);
+  assert.equal(forceAt(-100, 0, spring), 1);
 });
 test("endstop strength remains comparable without preset-specific rescaling", () => {
   const preset = presets.find((p) => p.id === "limit");

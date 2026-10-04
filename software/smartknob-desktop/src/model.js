@@ -293,8 +293,8 @@ export function getControl(apps, id) {
     }
   }
   const result = { ...base, ...control };
-  // Sparse detents have no firmware D term: use the official timeline gain and
-  // angular capture width for all magnetic controls, including standard values.
+  // Sparse detents have no firmware D term: use the shared, device-tuned gain
+  // and capture width for all magnetic controls, including standard values.
   return result.detents.length
     ? { ...result, strength: MAGNETIC_STRENGTH, width: MAGNETIC_WIDTH }
     : result;

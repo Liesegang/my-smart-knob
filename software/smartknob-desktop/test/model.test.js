@@ -38,7 +38,7 @@ test("twelve independent app states have bounded controls and immutable transiti
     assert.equal(getAppValue(apps, app), control.value);
     assert.ok(control.min <= control.value && control.value <= control.max, app);
     assert.ok(Number.isInteger(control.value), app);
-    assert.ok(control.width > 0 && control.strength >= 0 && control.strength <= (control.detents.length ? 10 : 2), app);
+    assert.ok(control.width > 0 && control.strength >= 0 && control.strength <= (control.detents.length ? 5 : 2), app);
     const upper = send(apps, app, "turn", { delta: 100000 });
     assert.equal(getControl(upper, app).value, control.max, app);
     const lower = send(apps, app, "turn", { delta: -100000 });
@@ -191,14 +191,14 @@ test("video press switches frame resolution without changing time or toggling pl
 test("video seek preloads chapter magnets while frame mode retains individual clicks", () => {
   assert.deepEqual(VIDEO_CHAPTERS.map(({ time, label }) => ({ time, label })), DEMO.scenes);
   assert.equal(initialApps().video.mode, "coarse");
-  assert.equal(VIDEO_CHAPTER_SNAP_STRENGTH, 10);
+  assert.equal(VIDEO_CHAPTER_SNAP_STRENGTH, 5);
   for (const chapter of VIDEO_CHAPTERS) {
     assert.equal(chapter.frame, chapter.time * VIDEO_FPS);
     let apps = set(initialApps(), "video", "frame", chapter.frame + 1);
     const seek = getControl(apps, "video");
     assert.ok(seek.detents.includes(chapter.time), "chapter magnets must be armed before exact frame arrival");
     assert.ok(seek.detents.includes(seek.max), "the end of the video is a magnetic boundary too");
-    assert.equal(seek.strength, 10);
+    assert.equal(seek.strength, 5);
     assert.equal(seek.width, 8);
     apps = set(apps, "video", "mode", "fine");
     assert.deepEqual(getControl(apps, "video").detents, []);

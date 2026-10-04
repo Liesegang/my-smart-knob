@@ -2,8 +2,8 @@
 export const waveAxes = Object.freeze({
   minAngle: -240,
   maxAngle: 240,
-  minForce: -1,
-  maxForce: 1,
+  minForce: -0.2,
+  maxForce: 0.2,
   samples: 1920,
 });
 
@@ -44,7 +44,8 @@ export function forceAt(value, position, config) {
     return 0;
   const force = -input * config.positionWidthRadians * 4 *
     (outside ? config.endstopStrengthUnit : config.detentStrengthUnit) / 10;
-  return Math.max(waveAxes.minForce, Math.min(waveAxes.maxForce, force));
+  // The firmware output limit is independent of the chart's zoom level.
+  return Math.max(-1, Math.min(1, force));
 }
 function waveCenter(config) {
   return config.minPosition <= config.maxPosition
