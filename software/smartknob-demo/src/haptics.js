@@ -1,5 +1,14 @@
-// Position-domain approximation of the firmware's P term. This intentionally
-// excludes PID derivative filtering, motor inertia and friction; it is not a
+// Shared physical angle and normalized P-output axes for every preset.
+export const waveAxes = Object.freeze({
+  minAngle: -240,
+  maxAngle: 240,
+  minForce: -1,
+  maxForce: 1,
+  samples: 1920,
+});
+
+// Approximation of the firmware's P term, normalized by its output limit (10).
+// This excludes PID derivative filtering, motor inertia and friction; it is not a
 // measured torque curve. Both directional branches use the firmware snap rules.
 export function advancePosition(position, value, config) {
   const bounded = config.minPosition <= config.maxPosition;
@@ -33,15 +42,23 @@ export function forceAt(value, position, config) {
     !config.detentPositions.includes(position)
   )
     return 0;
-  return (
-    -input * (outside ? config.endstopStrengthUnit : config.detentStrengthUnit)
-  );
+  const force = -input * config.positionWidthRadians * 4 *
+    (outside ? config.endstopStrengthUnit : config.detentStrengthUnit) / 10;
+  return Math.max(waveAxes.minForce, Math.min(waveAxes.maxForce, force));
+}
+function waveCenter(config) {
+  return config.minPosition <= config.maxPosition
+    ? (config.minPosition + config.maxPosition) / 2
+    : 0;
+}
+export function waveAngle(value, config) {
+  return (value - waveCenter(config)) * config.positionWidthRadians * 180 / Math.PI;
 }
 export function waveDomain(config) {
-  if (config.minPosition === config.maxPosition) return [-1.5, 1.5];
-  if (config.minPosition < config.maxPosition)
-    return [config.minPosition - 0.5, config.maxPosition + 0.5];
-  return [-3, 3];
+  const width = config.positionWidthRadians * 180 / Math.PI;
+  return [waveAxes.minAngle, waveAxes.maxAngle].map(
+    (angle) => waveCenter(config) + angle / width,
+  );
 }
 export function wrappedValue(value, min, max) {
   return ((((value - min) % (max - min)) + (max - min)) % (max - min)) + min;
@@ -59,11 +76,11 @@ export function waveSamples(config) {
         Math.min(config.maxPosition, position),
       );
     const points = [];
-    for (let i = 0; i <= 720; i++) {
+    for (let i = 0; i <= waveAxes.samples; i++) {
       const value =
         direction > 0
-          ? min + ((max - min) * i) / 720
-          : max - ((max - min) * i) / 720;
+          ? min + ((max - min) * i) / waveAxes.samples
+          : max - ((max - min) * i) / waveAxes.samples;
       position = advancePosition(position, value, config);
       points.push({ value, force: forceAt(value, position, config) });
     }

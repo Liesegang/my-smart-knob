@@ -1,7 +1,7 @@
 import { Connection } from "./protocol.js";
 import { presets, presetConfig, neutralConfig } from "./presets.js";
 import { renderDial, renderWave, updateWaveCursor } from "./visuals.js";
-import { advancePosition } from "./haptics.js";
+import { advancePosition, waveAngle } from "./haptics.js";
 
 const $ = (id) => document.getElementById(id);
 let connection = null,
@@ -72,7 +72,7 @@ function updateConnectionUI() {
 function draw() {
   renderDial($("dial"), selected, config, value);
   updateWaveCursor($("wave"), config, value, detentPosition);
-  $("wave-position").textContent = value.toFixed(2);
+  $("wave-position").textContent = `${waveAngle(value, config).toFixed(1)}°`;
   $("preview").value = String(value);
 }
 function selectPreset(preset, nextVariant = 0) {

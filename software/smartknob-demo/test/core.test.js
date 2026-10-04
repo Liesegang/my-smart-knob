@@ -8,6 +8,9 @@ import {
   advancePosition,
   forceAt,
   waveSamples,
+  waveAxes,
+  waveDomain,
+  waveAngle,
   wrappedValue,
   shuttleSpeed,
 } from "../src/haptics.js";
@@ -117,9 +120,45 @@ test("hysteresis uses direction-dependent states; cursor wraps on both sides", (
   assert.equal(wrappedValue(3, -3, 3), -3);
   assert.equal(wrappedValue(-3.1, -3, 3), 2.9000000000000004);
   const samples = waveSamples(c);
-  assert.equal(samples.forward.length, 721);
-  assert.equal(samples.reverse.length, 721);
+  assert.equal(samples.forward.length, waveAxes.samples + 1);
+  assert.equal(samples.reverse.length, waveAxes.samples + 1);
   assert.ok(samples.forward.every((p) => Number.isFinite(p.force)));
+});
+test("every preset and variant uses the same physical angle range", () => {
+  for (const preset of presets) {
+    for (let variant = 0; variant < (preset.variants?.length || 1); variant++) {
+      const c = presetConfig(preset, 1, variant);
+      const [min, max] = waveDomain(c);
+      assert.ok(Math.abs(waveAngle(min, c) + 240) < 1e-9);
+      assert.ok(Math.abs(waveAngle(max, c) - 240) < 1e-9);
+      assert.ok(Math.abs(waveAngle((min + max) / 2, c)) < 1e-9);
+      const samples = waveSamples(c);
+      assert.ok([...samples.forward, ...samples.reverse].every(
+        ({ force }) => Number.isFinite(force) && force >= -1 && force <= 1,
+      ));
+      assert.equal(wrappedValue(241, -240, 240), -239);
+      assert.equal(wrappedValue(-241, -240, 240), 239);
+    }
+  }
+});
+test("force compares the same angular error on one shared firmware P scale", () => {
+  const coarse = presetConfig(presets.find((p) => p.id === "coarse"), 1);
+  const fine = presetConfig(presets.find((p) => p.id === "fine"), 1);
+  // Both have a 1° dead zone and the same strength. A 2° displacement
+  // must give the same force despite their different step widths.
+  const expected = -(Math.PI / 180) * 0.65 * 4 / 10;
+  assert.ok(Math.abs(forceAt(2 / 30, 0, coarse) - expected) < 1e-12);
+  assert.ok(Math.abs(forceAt(2 / 6, 0, fine) - expected) < 1e-12);
+  const coarseStep = waveAngle(1, coarse) - waveAngle(0, coarse);
+  const fineStep = waveAngle(1, fine) - waveAngle(0, fine);
+  assert.ok(Math.abs(coarseStep / fineStep - 5) < 1e-12);
+});
+test("endstop strength remains comparable without preset-specific rescaling", () => {
+  const preset = presets.find((p) => p.id === "limit");
+  const soft = presetConfig(preset, 1, 0);
+  const hard = presetConfig(preset, 1, 1);
+  assert.deepEqual(waveDomain(soft), waveDomain(hard));
+  assert.ok(Math.abs(forceAt(-0.5, 0, hard) / forceAt(-0.5, 0, soft) - 0.9 / 0.35) < 1e-12);
 });
 function fakeVideo() {
   return {
