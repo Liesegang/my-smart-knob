@@ -9,6 +9,15 @@
 #error Regenerate this file with the current version of nanopb generator.
 #endif
 
+/* Enum definitions */
+typedef enum _PB_NavigationAction {
+    PB_NavigationAction_NAVIGATION_UNSPECIFIED = 0,
+    PB_NavigationAction_PREVIOUS_DEMO = 1,
+    PB_NavigationAction_NEXT_DEMO = 2,
+    PB_NavigationAction_NEXT_VARIANT = 3,
+    PB_NavigationAction_PREVIOUS_VARIANT = 4
+} PB_NavigationAction;
+
 /* Struct definitions */
 /* * Lets the host know that a ToSmartknob message was received and should not be retried. */
 typedef struct _PB_Ack {
@@ -153,20 +162,18 @@ typedef struct _PB_SmartKnobState {
     uint8_t press_nonce;
 } PB_SmartKnobState;
 
-/* Message FROM the SmartKnob to the host */
-typedef struct _PB_FromSmartKnob {
-    uint8_t protocol_version;
-    pb_size_t which_payload;
-    union {
-        PB_Ack ack;
-        PB_Log log;
-        PB_SmartKnobState smartknob_state;
-    } payload;
-} PB_FromSmartKnob;
-
 typedef struct _PB_RequestState {
     char dummy_field;
 } PB_RequestState;
+
+/* A Web Serial session renews ownership every second. Missing renewals for
+ five seconds return control to the standalone demo. The session ID prevents
+ retried button events from an earlier connection being applied on reconnect. */
+typedef struct _PB_HostControl {
+    bool enabled;
+    uint32_t session_id;
+    uint32_t acknowledged_button_sequence;
+} PB_HostControl;
 
 /* Message TO the Smartknob from the host */
 typedef struct _PB_ToSmartknob {
@@ -176,8 +183,29 @@ typedef struct _PB_ToSmartknob {
     union {
         PB_RequestState request_state;
         PB_SmartKnobConfig smartknob_config;
+        PB_HostControl host_control;
     } payload;
 } PB_ToSmartknob;
+
+/* Ordered, acknowledged input events. While the host owns control, the device
+ forwards the buttons and waits for the host to send the resulting config. */
+typedef struct _PB_ButtonEvent {
+    uint32_t session_id;
+    uint32_t sequence;
+    PB_NavigationAction action;
+} PB_ButtonEvent;
+
+/* Message FROM the SmartKnob to the host */
+typedef struct _PB_FromSmartKnob {
+    uint8_t protocol_version;
+    pb_size_t which_payload;
+    union {
+        PB_Ack ack;
+        PB_Log log;
+        PB_SmartKnobState smartknob_state;
+        PB_ButtonEvent button_event;
+    } payload;
+} PB_FromSmartKnob;
 
 typedef struct _PB_MotorCalibration {
     bool calibrated;
@@ -204,6 +232,25 @@ typedef struct _PB_PersistentConfiguration {
 extern "C" {
 #endif
 
+/* Helper constants for enums */
+#define _PB_NavigationAction_MIN PB_NavigationAction_NAVIGATION_UNSPECIFIED
+#define _PB_NavigationAction_MAX PB_NavigationAction_PREVIOUS_VARIANT
+#define _PB_NavigationAction_ARRAYSIZE ((PB_NavigationAction)(PB_NavigationAction_PREVIOUS_VARIANT+1))
+
+
+
+
+
+
+
+
+
+#define PB_ButtonEvent_action_ENUMTYPE PB_NavigationAction
+
+
+
+
+
 /* Initializer values for message structs */
 #define PB_FromSmartKnob_init_default            {0, 0, {PB_Ack_init_default}}
 #define PB_ToSmartknob_init_default              {0, 0, 0, {PB_RequestState_init_default}}
@@ -212,6 +259,8 @@ extern "C" {
 #define PB_SmartKnobState_init_default           {0, 0, false, PB_SmartKnobConfig_init_default, 0}
 #define PB_SmartKnobConfig_init_default          {0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, {0, 0, 0, 0, 0}, 0, 0}
 #define PB_RequestState_init_default             {0}
+#define PB_HostControl_init_default              {0, 0, 0}
+#define PB_ButtonEvent_init_default              {0, 0, _PB_NavigationAction_MIN}
 #define PB_PersistentConfiguration_init_default  {0, false, PB_MotorCalibration_init_default, false, PB_StrainCalibration_init_default}
 #define PB_MotorCalibration_init_default         {0, 0, 0, 0}
 #define PB_StrainCalibration_init_default        {0, 0}
@@ -222,6 +271,8 @@ extern "C" {
 #define PB_SmartKnobState_init_zero              {0, 0, false, PB_SmartKnobConfig_init_zero, 0}
 #define PB_SmartKnobConfig_init_zero             {0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, {0, 0, 0, 0, 0}, 0, 0}
 #define PB_RequestState_init_zero                {0}
+#define PB_HostControl_init_zero                 {0, 0, 0}
+#define PB_ButtonEvent_init_zero                 {0, 0, _PB_NavigationAction_MIN}
 #define PB_PersistentConfiguration_init_zero     {0, false, PB_MotorCalibration_init_zero, false, PB_StrainCalibration_init_zero}
 #define PB_MotorCalibration_init_zero            {0, 0, 0, 0}
 #define PB_StrainCalibration_init_zero           {0, 0}
@@ -246,14 +297,22 @@ extern "C" {
 #define PB_SmartKnobState_sub_position_unit_tag  2
 #define PB_SmartKnobState_config_tag             3
 #define PB_SmartKnobState_press_nonce_tag        4
-#define PB_FromSmartKnob_protocol_version_tag    1
-#define PB_FromSmartKnob_ack_tag                 2
-#define PB_FromSmartKnob_log_tag                 3
-#define PB_FromSmartKnob_smartknob_state_tag     4
+#define PB_HostControl_enabled_tag               1
+#define PB_HostControl_session_id_tag            2
+#define PB_HostControl_acknowledged_button_sequence_tag 3
 #define PB_ToSmartknob_protocol_version_tag      1
 #define PB_ToSmartknob_nonce_tag                 2
 #define PB_ToSmartknob_request_state_tag         3
 #define PB_ToSmartknob_smartknob_config_tag      4
+#define PB_ToSmartknob_host_control_tag          5
+#define PB_ButtonEvent_session_id_tag            1
+#define PB_ButtonEvent_sequence_tag              2
+#define PB_ButtonEvent_action_tag                3
+#define PB_FromSmartKnob_protocol_version_tag    1
+#define PB_FromSmartKnob_ack_tag                 2
+#define PB_FromSmartKnob_log_tag                 3
+#define PB_FromSmartKnob_smartknob_state_tag     4
+#define PB_FromSmartKnob_button_event_tag        5
 #define PB_MotorCalibration_calibrated_tag       1
 #define PB_MotorCalibration_zero_electrical_offset_tag 2
 #define PB_MotorCalibration_direction_cw_tag     3
@@ -269,22 +328,26 @@ extern "C" {
 X(a, STATIC,   SINGULAR, UINT32,   protocol_version,   1) \
 X(a, STATIC,   ONEOF,    MESSAGE,  (payload,ack,payload.ack),   2) \
 X(a, STATIC,   ONEOF,    MESSAGE,  (payload,log,payload.log),   3) \
-X(a, STATIC,   ONEOF,    MESSAGE,  (payload,smartknob_state,payload.smartknob_state),   4)
+X(a, STATIC,   ONEOF,    MESSAGE,  (payload,smartknob_state,payload.smartknob_state),   4) \
+X(a, STATIC,   ONEOF,    MESSAGE,  (payload,button_event,payload.button_event),   5)
 #define PB_FromSmartKnob_CALLBACK NULL
 #define PB_FromSmartKnob_DEFAULT NULL
 #define PB_FromSmartKnob_payload_ack_MSGTYPE PB_Ack
 #define PB_FromSmartKnob_payload_log_MSGTYPE PB_Log
 #define PB_FromSmartKnob_payload_smartknob_state_MSGTYPE PB_SmartKnobState
+#define PB_FromSmartKnob_payload_button_event_MSGTYPE PB_ButtonEvent
 
 #define PB_ToSmartknob_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, UINT32,   protocol_version,   1) \
 X(a, STATIC,   SINGULAR, UINT32,   nonce,             2) \
 X(a, STATIC,   ONEOF,    MESSAGE,  (payload,request_state,payload.request_state),   3) \
-X(a, STATIC,   ONEOF,    MESSAGE,  (payload,smartknob_config,payload.smartknob_config),   4)
+X(a, STATIC,   ONEOF,    MESSAGE,  (payload,smartknob_config,payload.smartknob_config),   4) \
+X(a, STATIC,   ONEOF,    MESSAGE,  (payload,host_control,payload.host_control),   5)
 #define PB_ToSmartknob_CALLBACK NULL
 #define PB_ToSmartknob_DEFAULT NULL
 #define PB_ToSmartknob_payload_request_state_MSGTYPE PB_RequestState
 #define PB_ToSmartknob_payload_smartknob_config_MSGTYPE PB_SmartKnobConfig
+#define PB_ToSmartknob_payload_host_control_MSGTYPE PB_HostControl
 
 #define PB_Ack_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, UINT32,   nonce,             1)
@@ -327,6 +390,20 @@ X(a, STATIC,   SINGULAR, INT32,    led_hue,          13)
 #define PB_RequestState_CALLBACK NULL
 #define PB_RequestState_DEFAULT NULL
 
+#define PB_HostControl_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, BOOL,     enabled,           1) \
+X(a, STATIC,   SINGULAR, UINT32,   session_id,        2) \
+X(a, STATIC,   SINGULAR, UINT32,   acknowledged_button_sequence,   3)
+#define PB_HostControl_CALLBACK NULL
+#define PB_HostControl_DEFAULT NULL
+
+#define PB_ButtonEvent_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, UINT32,   session_id,        1) \
+X(a, STATIC,   SINGULAR, UINT32,   sequence,          2) \
+X(a, STATIC,   SINGULAR, UENUM,    action,            3)
+#define PB_ButtonEvent_CALLBACK NULL
+#define PB_ButtonEvent_DEFAULT NULL
+
 #define PB_PersistentConfiguration_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, UINT32,   version,           1) \
 X(a, STATIC,   OPTIONAL, MESSAGE,  motor,             2) \
@@ -357,6 +434,8 @@ extern const pb_msgdesc_t PB_Log_msg;
 extern const pb_msgdesc_t PB_SmartKnobState_msg;
 extern const pb_msgdesc_t PB_SmartKnobConfig_msg;
 extern const pb_msgdesc_t PB_RequestState_msg;
+extern const pb_msgdesc_t PB_HostControl_msg;
+extern const pb_msgdesc_t PB_ButtonEvent_msg;
 extern const pb_msgdesc_t PB_PersistentConfiguration_msg;
 extern const pb_msgdesc_t PB_MotorCalibration_msg;
 extern const pb_msgdesc_t PB_StrainCalibration_msg;
@@ -369,13 +448,17 @@ extern const pb_msgdesc_t PB_StrainCalibration_msg;
 #define PB_SmartKnobState_fields &PB_SmartKnobState_msg
 #define PB_SmartKnobConfig_fields &PB_SmartKnobConfig_msg
 #define PB_RequestState_fields &PB_RequestState_msg
+#define PB_HostControl_fields &PB_HostControl_msg
+#define PB_ButtonEvent_fields &PB_ButtonEvent_msg
 #define PB_PersistentConfiguration_fields &PB_PersistentConfiguration_msg
 #define PB_MotorCalibration_fields &PB_MotorCalibration_msg
 #define PB_StrainCalibration_fields &PB_StrainCalibration_msg
 
 /* Maximum encoded size of messages (where known) */
 #define PB_Ack_size                              6
+#define PB_ButtonEvent_size                      14
 #define PB_FromSmartKnob_size                    264
+#define PB_HostControl_size                      14
 #define PB_Log_size                              258
 #define PB_MotorCalibration_size                 15
 #define PB_PersistentConfiguration_size          47

@@ -16,7 +16,7 @@ bool config_eq(PB_SmartKnobConfig& first, PB_SmartKnobConfig& second) {
         && first.sub_position_unit == second.sub_position_unit
         && strcmp(first.text, second.text) == 0
         && first.detent_positions_count == second.detent_positions_count
-        && memcmp(first.detent_positions, second.detent_positions, first.detent_positions_count * sizeof(first.detent_positions[0]))
+        && memcmp(first.detent_positions, second.detent_positions, first.detent_positions_count * sizeof(first.detent_positions[0])) == 0
         && first.snap_point_bias == second.snap_point_bias;
 }
 
@@ -24,5 +24,6 @@ bool state_eq(PB_SmartKnobState& first, PB_SmartKnobState& second) {
     return first.has_config == second.has_config
         && (!first.has_config || config_eq(first.config, second.config))
         && first.current_position == second.current_position
-        && first.sub_position_unit == second.sub_position_unit;
+        && first.sub_position_unit == second.sub_position_unit
+        && first.press_nonce == second.press_nonce;
 }

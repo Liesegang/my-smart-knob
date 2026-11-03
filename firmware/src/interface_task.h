@@ -11,6 +11,7 @@
 #include "serial/serial_protocol_protobuf.h"
 #include "serial/uart_stream.h"
 #include "task.h"
+#include "demo/buttons.h"
 
 #ifndef SK_FORCE_UART_STREAM
     #define SK_FORCE_UART_STREAM 0
@@ -51,10 +52,15 @@ class InterfaceTask : public Task<InterfaceTask>, public Logger {
         SerialProtocol* current_protocol_ = nullptr;
         bool remote_controlled_ = false;
         int current_config_ = 0;
+        uint8_t demo_variant_ = 0;
+        uint8_t demo_nonce_ = 0;
+        DemoButtons demo_buttons_;
         uint8_t press_count_ = 1;
 
         PB_SmartKnobState latest_state_ = {};
         PB_SmartKnobConfig latest_config_ = {};
+        PB_SmartKnobState local_resume_state_ = {};
+        bool local_resume_valid_ = false;
 
         QueueHandle_t log_queue_;
         QueueHandle_t knob_state_queue_;
@@ -62,6 +68,7 @@ class InterfaceTask : public Task<InterfaceTask>, public Logger {
         SerialProtocolProtobuf proto_protocol_;
 
         void changeConfig(bool next);
+        void applyLocalConfig(bool preserve_position = false);
         void updateHardware();
         void publishState();
         void applyConfig(PB_SmartKnobConfig& config, bool from_remote);

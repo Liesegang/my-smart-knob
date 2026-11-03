@@ -13,6 +13,38 @@
 #include "interface_task.h"
 #include "semaphore_guard.h"
 #include "util.h"
+#include "demo/demo.h"
+
+#ifndef SK_BUTTON_ACTIVE_LOW
+#define SK_BUTTON_ACTIVE_LOW 1
+#endif
+#ifndef PIN_BUTTON_VARIANT_PREV
+#define PIN_BUTTON_VARIANT_PREV -1
+#endif
+#ifndef PIN_BUTTON_VARIANT_NEXT
+#define PIN_BUTTON_VARIANT_NEXT -1
+#endif
+
+#if SK_STANDALONE_DEMO
+static const int demo_button_pins[] = {PIN_BUTTON_PREV, PIN_BUTTON_VARIANT_PREV, PIN_BUTTON_VARIANT_NEXT, PIN_BUTTON_NEXT};
+static constexpr bool reservedOutput(int pin) {
+    return pin >= 0 && (pin == PIN_UH || pin == PIN_UL || pin == PIN_VH || pin == PIN_VL || pin == PIN_WH || pin == PIN_WL
+        || pin == TFT_MOSI || pin == TFT_SCLK || pin == TFT_CS || pin == TFT_DC || pin == TFT_RST
+        || pin == PIN_SDA || pin == PIN_SCL || pin == 19 || pin == 20);
+}
+static constexpr bool distinctPins(int a, int b) { return a < 0 || b < 0 || a != b; }
+static_assert(distinctPins(PIN_BUTTON_PREV, PIN_BUTTON_NEXT)
+    && distinctPins(PIN_BUTTON_PREV, PIN_BUTTON_VARIANT_PREV) && distinctPins(PIN_BUTTON_PREV, PIN_BUTTON_VARIANT_NEXT)
+    && distinctPins(PIN_BUTTON_NEXT, PIN_BUTTON_VARIANT_PREV) && distinctPins(PIN_BUTTON_NEXT, PIN_BUTTON_VARIANT_NEXT)
+    && distinctPins(PIN_BUTTON_VARIANT_PREV, PIN_BUTTON_VARIANT_NEXT), "Switches need distinct GPIOs");
+static_assert(!reservedOutput(PIN_BUTTON_PREV) && !reservedOutput(PIN_BUTTON_NEXT)
+    && !reservedOutput(PIN_BUTTON_VARIANT_PREV) && !reservedOutput(PIN_BUTTON_VARIANT_NEXT),
+              "Switch GPIO conflicts with motor, display, I2C or native USB; verify hardware mapping");
+static void readDemoButtons(bool (&pressed)[4]) {
+    for (uint8_t i = 0; i < 4; ++i) pressed[i] = demo_button_pins[i] >= 0
+        && digitalRead(demo_button_pins[i]) == (SK_BUTTON_ACTIVE_LOW ? LOW : HIGH);
+}
+#endif
 
 #if SK_LEDS
 CRGB leds[NUM_LEDS];
@@ -230,6 +262,13 @@ InterfaceTask::InterfaceTask(const uint8_t task_core, MotorTask& motor_task, Dis
         }),
         proto_protocol_(stream_, [this] (PB_SmartKnobConfig& config) {
             applyConfig(config, true);
+        }, [this] (bool host_active) {
+            if (host_active) {
+                remote_controlled_ = true;
+            } else {
+                applyLocalConfig(true);
+                log("Standalone control restored");
+            }
         }) {
     #if SK_DISPLAY
         assert(display_task != nullptr);
@@ -274,7 +313,13 @@ void InterfaceTask::run() {
         }
     #endif
 
-    applyConfig(configs[0], false);
+    #if SK_STANDALONE_DEMO
+    for (int pin : demo_button_pins) if (pin >= 0) pinMode(pin, SK_BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);
+    bool initial_buttons[4];
+    readDemoButtons(initial_buttons);
+    demo_buttons_.begin(initial_buttons, millis());
+    #endif
+    applyLocalConfig();
     motor_task_.addListener(knob_state_queue_);
 
     plaintext_protocol_.init([this] () {
@@ -364,6 +409,11 @@ void InterfaceTask::log(const char* msg) {
 }
 
 void InterfaceTask::changeConfig(bool next) {
+    #if SK_STANDALONE_DEMO
+    current_config_ = (current_config_ + (next ? 1 : DEMO_PRESET_COUNT - 1)) % DEMO_PRESET_COUNT;
+    demo_variant_ = 0;
+    applyLocalConfig();
+    #else
     if (next) {
         current_config_ = (current_config_ + 1) % COUNT_OF(configs);
     } else {
@@ -377,9 +427,57 @@ void InterfaceTask::changeConfig(bool next) {
     snprintf(buf_, sizeof(buf_), "Changing config to %d -- %s", current_config_, configs[current_config_].text);
     log(buf_);
     applyConfig(configs[current_config_], false);
+    #endif
+}
+
+void InterfaceTask::applyLocalConfig(bool preserve_position) {
+    #if SK_STANDALONE_DEMO
+    demo_nonce_ = latest_config_.position_nonce + 1;
+    PB_SmartKnobConfig config = demoConfig(current_config_, demo_variant_, demo_nonce_);
+    if (preserve_position && local_resume_valid_) {
+        config.position = local_resume_state_.current_position;
+        config.sub_position_unit = local_resume_state_.sub_position_unit;
+    }
+    applyConfig(config, false);
+    snprintf(buf_, sizeof(buf_), "Demo %d/8: %s (variant %u)", current_config_ + 1,
+             demoPreset(current_config_).label, demo_variant_);
+    log(buf_);
+    #else
+    applyConfig(configs[current_config_], false);
+    #endif
 }
 
 void InterfaceTask::updateHardware() {
+    #if SK_STANDALONE_DEMO
+    // Web ownership is exclusive: only forward input while paired. The host
+    // sends the resulting config, so the two displays cannot select separately.
+    bool buttons[4];
+    readDemoButtons(buttons);
+    const DemoButtonAction action = demo_buttons_.update(buttons, millis());
+    if (remote_controlled_) {
+        switch (action) {
+            case DemoButtonAction::PREVIOUS: proto_protocol_.sendButton(PB_NavigationAction_PREVIOUS_DEMO); break;
+            case DemoButtonAction::NEXT: proto_protocol_.sendButton(PB_NavigationAction_NEXT_DEMO); break;
+            case DemoButtonAction::PREVIOUS_VARIANT: proto_protocol_.sendButton(PB_NavigationAction_PREVIOUS_VARIANT); break;
+            case DemoButtonAction::NEXT_VARIANT: proto_protocol_.sendButton(PB_NavigationAction_NEXT_VARIANT); break;
+            default: break;
+        }
+    } else switch (action) {
+        case DemoButtonAction::PREVIOUS: changeConfig(false); break;
+        case DemoButtonAction::NEXT: changeConfig(true); break;
+        case DemoButtonAction::PREVIOUS_VARIANT:
+            if (demoPreset(current_config_).variant_count < 2) break;
+            demo_variant_ = (demo_variant_ + demoPreset(current_config_).variant_count - 1) % demoPreset(current_config_).variant_count;
+            applyLocalConfig();
+            break;
+        case DemoButtonAction::NEXT_VARIANT:
+            if (demoPreset(current_config_).variant_count < 2) break;
+            demo_variant_ = (demo_variant_ + 1) % demoPreset(current_config_).variant_count;
+            applyLocalConfig();
+            break;
+        default: break;
+    }
+    #endif
     // How far button is pressed, in range [0, 1]
     float press_value_unit = 0;
 
@@ -479,10 +577,25 @@ void InterfaceTask::setConfiguration(Configuration* configuration) {
 void InterfaceTask::publishState() {
     // Apply local state before publishing to serial
     latest_state_.press_nonce = press_count_;
+    if (demoIndex(latest_state_.config.text) >= 0 && strcmp(latest_state_.config.text, latest_config_.text) == 0) {
+        local_resume_state_ = latest_state_;
+        local_resume_valid_ = true;
+    }
     current_protocol_->handleState(latest_state_);
 }
 
 void InterfaceTask::applyConfig(PB_SmartKnobConfig& config, bool from_remote) {
+    #if SK_STANDALONE_DEMO
+    const int index = demoIndex(config.text);
+    if (from_remote && index >= 0) {
+        current_config_ = index;
+        demo_variant_ = demoVariant(config);
+        local_resume_state_ = {};
+        local_resume_state_.current_position = config.position;
+        local_resume_state_.sub_position_unit = config.sub_position_unit;
+        local_resume_valid_ = true;
+    }
+    #endif
     remote_controlled_ = from_remote;
     latest_config_ = config;
     motor_task_.setConfig(config);

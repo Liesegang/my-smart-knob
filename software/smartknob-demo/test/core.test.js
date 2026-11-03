@@ -4,6 +4,7 @@ import { PB, frame, unframe, crc32, Connection } from "../src/protocol.js";
 import { decode } from "../../js/packages/smartknobjs-core/src/cobs.ts";
 import { timestamp, markers, nearest, seekTime } from "../src/model.js";
 import { presets, presetConfig } from "../src/presets.js";
+import { deviceSelection } from "../src/navigation.js";
 import {
   advancePosition,
   forceAt,
@@ -298,6 +299,10 @@ function makePort(handler) {
       write(bytes) {
         port.written.push(bytes);
         handler?.(bytes, port);
+        if (!bytes.every((n) => n === 0)) {
+          const message = toMessage(bytes);
+          if (message.hostControl) port.emit({ ack: { nonce: message.nonce } });
+        }
       },
     }),
     emit(message) {
@@ -376,6 +381,81 @@ test("serial retries the same nonce and closes without leaking retry timers", as
   const count = port.written.length;
   await sleep(280);
   assert.equal(port.written.length, count);
+});
+
+test("device buttons follow the Web selection, wrap themes, and toggle only supported variants", () => {
+  const actions = PB.NavigationAction;
+  assert.deepEqual(deviceSelection(presets, 0, 0, actions.PREVIOUS_DEMO), { index: 7, variant: 0 });
+  assert.deepEqual(deviceSelection(presets, 7, 1, actions.NEXT_DEMO), { index: 0, variant: 0 });
+  assert.deepEqual(deviceSelection(presets, 3, 0, actions.NEXT_VARIANT), { index: 3, variant: 1 });
+  assert.deepEqual(deviceSelection(presets, 3, 1, actions.NEXT_VARIANT), { index: 3, variant: 0 });
+  assert.deepEqual(deviceSelection(presets, 1, 0, actions.NEXT_VARIANT), { index: 1, variant: 0 });
+});
+
+test("a resumed Web session reclaims ownership before restoring its selected config", async () => {
+  const port = makePort((bytes, p) => {
+    if (bytes.every((n) => n === 0)) return;
+    const message = toMessage(bytes);
+    if (message.requestState || message.smartknobConfig) {
+      p.emit({ ack: { nonce: message.nonce } });
+      p.emit({ smartknobState: { config: message.smartknobConfig || {} } });
+    }
+  });
+  const c = new Connection(() => {}, () => {});
+  await c.open(port);
+  const selected = presetConfig(presets[5], 42, 1);
+  c.config(selected);
+  await c.drain();
+  const previousSession = c.sessionId;
+  const start = port.written.length;
+  port.emit({ smartknobState: { config: { text: "demo:free:0" } } });
+  await sleep(30);
+  await c.drain();
+  const sent = port.written.slice(start).filter((b) => !b.every((n) => n === 0)).map(toMessage);
+  assert.equal(sent[0].hostControl.enabled, true);
+  assert.notEqual(sent[0].hostControl.sessionId, previousSession);
+  assert.equal(c.lastButtonSequence, 0);
+  assert.equal(sent[1].smartknobConfig.text, selected.text);
+  assert.equal(sent[1].smartknobConfig.positionNonce, 42);
+  await c.close();
+});
+
+test("ownership heartbeats preserve queued configs; retried button events act once and release on close", async () => {
+  const port = makePort((bytes, p) => {
+    if (bytes.every((n) => n === 0)) return;
+    const message = toMessage(bytes);
+    if (message.requestState) {
+      p.emit({ ack: { nonce: message.nonce } });
+      p.emit({ smartknobState: {} });
+    }
+  });
+  const actions = [];
+  const c = new Connection(() => {}, () => {}, (action) => actions.push(action));
+  await c.open(port);
+  c.config(presetConfig(presets[0], 1));
+  await sleep(5);
+  const initial = c.pending.nonce;
+  c.config(presetConfig(presets[3], 2));
+  c.renewControl();
+  c.renewControl();
+  port.emit({ ack: { nonce: initial } });
+  await sleep(20);
+  assert.equal(c.pending && toMessage(c.pending.bytes).smartknobConfig.text, "studio:limit:2");
+  port.emit({ ack: { nonce: c.pending.nonce } });
+  await c.drain();
+  const event = (sessionId, sequence, action) => port.emit({ buttonEvent: { sessionId, sequence, action } });
+  event(c.sessionId + 1, 1, PB.NavigationAction.NEXT_DEMO);
+  event(c.sessionId, 2, PB.NavigationAction.NEXT_VARIANT);
+  event(c.sessionId, 1, PB.NavigationAction.NEXT_DEMO);
+  event(c.sessionId, 1, PB.NavigationAction.NEXT_DEMO);
+  event(c.sessionId, 2, PB.NavigationAction.NEXT_VARIANT);
+  await sleep(20);
+  assert.deepEqual(actions, [PB.NavigationAction.NEXT_DEMO, PB.NavigationAction.NEXT_VARIANT]);
+  assert.equal(c.lastButtonSequence, 2);
+  await c.close();
+  const controls = port.written.filter((b) => !b.every((n) => n === 0)).map(toMessage).filter((m) => m.hostControl);
+  assert.equal(controls.at(-1).hostControl.enabled, false);
+  assert.equal(controls.at(-1).hostControl.acknowledgedButtonSequence, 2);
 });
 
 test("shuttle mode respects player readiness", () => {

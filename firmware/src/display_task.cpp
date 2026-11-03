@@ -2,12 +2,15 @@
 #include "display_task.h"
 #include "semaphore_guard.h"
 #include "util.h"
+#include "demo/dial.h"
 
 #include "font/roboto_light_60.h"
 
 static const uint8_t LEDC_CHANNEL_LCD_BACKLIGHT = 0;
 
-DisplayTask::DisplayTask(const uint8_t task_core) : Task{"Display", 2048, 1, task_core} {
+// The dial renderer uses trigonometry, formatted numbers and nested TFT text
+// calls. The legacy 2 KiB stack is too small for that call chain on ESP32-S3.
+DisplayTask::DisplayTask(const uint8_t task_core) : Task{"Display", SK_STANDALONE_DEMO ? 6144U : 2048U, 1, task_core} {
   knob_state_queue_ = xQueueCreate(1, sizeof(PB_SmartKnobState));
   assert(knob_state_queue_ != NULL);
 
@@ -31,7 +34,7 @@ static void drawPlayButton(TFT_eSprite& spr, int x, int y, int width, int height
 
 void DisplayTask::run() {
     tft_.begin();
-    tft_.invertDisplay(1);
+    tft_.invertDisplay(SK_STANDALONE_DEMO ? 0 : 1);
     tft_.setRotation(SK_DISPLAY_ROTATION);
     tft_.fillScreen(TFT_DARKGREEN);
 
@@ -39,11 +42,18 @@ void DisplayTask::run() {
     // ledcAttachPin(PIN_LCD_BACKLIGHT, LEDC_CHANNEL_LCD_BACKLIGHT);
     // ledcWrite(LEDC_CHANNEL_LCD_BACKLIGHT, (1 << SK_BACKLIGHT_BIT_DEPTH) - 1);
 
-    spr_.setColorDepth(8);
+    spr_.setColorDepth(SK_STANDALONE_DEMO ? 16 : 8);
 
-    if (spr_.createSprite(TFT_AWIDTH, TFT_AHEIGHT) == nullptr) {
+    void* framebuffer = spr_.createSprite(TFT_AWIDTH, TFT_AHEIGHT);
+    if (framebuffer == nullptr && SK_STANDALONE_DEMO) {
+      spr_.setColorDepth(8);
+      framebuffer = spr_.createSprite(TFT_AWIDTH, TFT_AHEIGHT);
+      log("Using 8-bit framebuffer (16-bit allocation unavailable)");
+    }
+    if (framebuffer == nullptr) {
       log("ERROR: sprite allocation failed!");
       tft_.fillScreen(TFT_RED);
+      while (true) delay(1000);
     } else {
       log("Sprite created!");
       tft_.fillScreen(TFT_PURPLE);
@@ -58,8 +68,21 @@ void DisplayTask::run() {
 
     spr_.setTextDatum(CC_DATUM);
     spr_.setTextColor(TFT_WHITE);
+    uint32_t demo_frames = 0;
     while(1) {
         if (xQueueReceive(knob_state_queue_, &state, portMAX_DELAY) == pdFALSE) {
+          continue;
+        }
+
+        if (drawDemoDial(spr_, state)) {
+          spr_.pushSprite(0, 0);
+          if (++demo_frames == 30) {
+            char health[80];
+            snprintf(health, sizeof(health), "Dial running: %dx%d; display stack watermark=%u",
+                     spr_.width(), spr_.height(), unsigned(uxTaskGetStackHighWaterMark(NULL)));
+            log(health);
+          }
+          delay(16);
           continue;
         }
 

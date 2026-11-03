@@ -41,12 +41,18 @@ export function unframe(bytes) {
   return message;
 }
 export class Connection {
-  constructor(onState, onStatus) {
+  constructor(onState, onStatus, onButton = () => {}) {
     this.onState = onState;
     this.onStatus = onStatus;
+    this.onButton = onButton;
     this.nonce = crypto.getRandomValues(new Uint32Array(1))[0] || 1;
     this.pending = null;
     this.latest = null;
+    this.control = null;
+    this.stateRequest = false;
+    this.lastConfig = null;
+    this.lastResyncAt = -Infinity;
+    this.confirmedRemote = false;
     this.buffer = [];
     this.closed = true;
   }
@@ -67,18 +73,48 @@ export class Connection {
     this.loopPromise = this.readLoop();
     this.send({ requestState: {} });
     await ready;
+    this.startSession();
+    this.renewControl();
+    this.heartbeat = setInterval(() => this.renewControl(), 1000);
+    await this.drain(1000);
     this.watchdog = setInterval(() => {
       if (performance.now() - this.lastStateAt > 10000)
         this.fail(new Error("デバイスの状態更新が停止しました。"));
     }, 1000);
   }
   config(config) {
+    if (this.closing) return;
+    this.lastConfig = config;
     this.send({ smartknobConfig: config });
+  }
+  startSession() {
+    const previous = this.sessionId;
+    this.sessionId = crypto.getRandomValues(new Uint32Array(1))[0] || 1;
+    if (this.sessionId === previous) this.sessionId = ((previous + 1) >>> 0) || 1;
+    this.lastButtonSequence = 0;
+    this.confirmedRemote = false;
+  }
+  renewControl(enabled = true) {
+    if (!this.sessionId) return;
+    this.send({ hostControl: {
+      enabled, sessionId: this.sessionId,
+      acknowledgedButtonSequence: this.lastButtonSequence,
+    } });
+  }
+  pump() {
+    const next = this.control || this.latest || (this.stateRequest ? { requestState: {} } : null);
+    if (this.control) this.control = null;
+    else if (this.latest) this.latest = null;
+    else this.stateRequest = false;
+    if (next) this.send(next);
   }
   send(payload) {
     if (this.closed) return;
     if (this.pending) {
-      this.latest = payload;
+      // Heartbeats and button ACKs must never overwrite a queued config.
+      if (payload.hostControl) this.control = payload;
+      else if (payload.smartknobConfig) this.latest = payload;
+      else if (payload.requestState) this.stateRequest = true;
       return;
     }
     this.nonce = (this.nonce + 1) >>> 0;
@@ -136,9 +172,19 @@ export class Connection {
             if (message.ack && message.ack.nonce === this.pending?.nonce) {
               clearTimeout(this.timer);
               this.pending = null;
-              const next = this.latest;
-              this.latest = null;
-              if (next) this.send(next);
+              this.pump();
+            }
+            if (message.buttonEvent && !this.closing) {
+              const event = message.buttonEvent;
+              if (event.sessionId === this.sessionId) {
+                // Firmware retries an event until this session acknowledges it.
+                // Consume each sequence once, in order, across config traffic.
+                if (event.sequence === ((this.lastButtonSequence + 1) >>> 0 || 1)) {
+                  this.onButton(event.action);
+                  this.lastButtonSequence = event.sequence;
+                }
+                this.renewControl();
+              }
             }
             if (message.smartknobState) {
               this.receivedState = true;
@@ -146,6 +192,20 @@ export class Connection {
               clearTimeout(this.readyTimer);
               this.resolveReady?.();
               this.resolveReady = null;
+              if (this.lastConfig && message.smartknobState.config?.text === this.lastConfig.text)
+                this.confirmedRemote = true;
+              // A suspended tab may outlive the firmware's ownership lease.
+              // Reclaim before resending the same idempotent config, rather
+              // than leaving the UI and standalone state at different modes.
+              if (!this.closing && this.lastConfig &&
+                  message.smartknobState.config?.text !== this.lastConfig.text &&
+                  performance.now() - this.lastResyncAt > 300) {
+                this.lastResyncAt = performance.now();
+                if (this.confirmedRemote && message.smartknobState.config?.text?.startsWith("demo:"))
+                  this.startSession();
+                this.renewControl();
+                this.send({ smartknobConfig: this.lastConfig });
+              }
               this.onState(message.smartknobState);
             }
           }
@@ -162,28 +222,37 @@ export class Connection {
     if (this.closed) return;
     this.rejectReady?.(error);
     this.rejectReady = null;
-    void this.close();
+    void this.close({ release: false });
     this.onStatus(error.message);
   }
   async drain(timeout = 1000) {
     const until = performance.now() + timeout;
     while (
       !this.closed &&
-      (this.pending || this.latest) &&
+      (this.pending || this.latest || this.control || this.stateRequest) &&
       performance.now() < until
     ) {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
   }
-  async close() {
+  async close({ release = true } = {}) {
     if (this.closing) return this.closing;
-    this.closed = true;
-    clearTimeout(this.timer);
-    clearTimeout(this.readyTimer);
+    clearInterval(this.heartbeat);
     clearInterval(this.watchdog);
-    this.pending = null;
-    this.latest = null;
     this.closing = (async () => {
+      if (release && !this.closed && this.sessionId) {
+        await this.drain(350);
+        this.latest = null;
+        this.control = null;
+        this.stateRequest = false;
+        this.renewControl(false);
+        await this.drain(600);
+      }
+      this.closed = true;
+      clearTimeout(this.timer);
+      clearTimeout(this.readyTimer);
+      this.pending = this.latest = this.control = null;
+      this.stateRequest = false;
       try {
         await this.reader?.cancel();
       } catch {}

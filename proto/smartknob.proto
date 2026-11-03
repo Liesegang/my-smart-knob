@@ -13,6 +13,7 @@ message FromSmartKnob {
         Ack ack = 2;
         Log log = 3;
         SmartKnobState smartknob_state = 4;
+        ButtonEvent button_event = 5;
     }
 }
 
@@ -26,6 +27,7 @@ message FromSmartKnob {
     oneof payload {
         RequestState request_state = 3;
         SmartKnobConfig smartknob_config = 4;
+        HostControl host_control = 5;
     }
 }
 
@@ -201,6 +203,31 @@ message SmartKnobConfig {
 }
 
 message RequestState {}
+
+// A Web Serial session renews ownership every second. Missing renewals for
+// five seconds return control to the standalone demo. The session ID prevents
+// retried button events from an earlier connection being applied on reconnect.
+message HostControl {
+    bool enabled = 1;
+    uint32 session_id = 2;
+    uint32 acknowledged_button_sequence = 3;
+}
+
+enum NavigationAction {
+    NAVIGATION_UNSPECIFIED = 0;
+    PREVIOUS_DEMO = 1;
+    NEXT_DEMO = 2;
+    NEXT_VARIANT = 3;
+    PREVIOUS_VARIANT = 4;
+}
+
+// Ordered, acknowledged input events. While the host owns control, the device
+// forwards the buttons and waits for the host to send the resulting config.
+message ButtonEvent {
+    uint32 session_id = 1;
+    uint32 sequence = 2;
+    NavigationAction action = 3;
+}
 
 message PersistentConfiguration {
     uint32 version = 1;

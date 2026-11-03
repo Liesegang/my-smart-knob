@@ -17,6 +17,10 @@ electronics/*/*backups
 
 # PlatformIO
 .pio/
+.pio-core/
+.venv-firmware/
+firmware/backups/
+firmware/diagnostics/*.jsonl
 
 # General build outputs
 build/

@@ -2,6 +2,7 @@ import { Connection } from "./protocol.js";
 import { presets, presetConfig, neutralConfig } from "./presets.js";
 import { renderDial, renderWave, updateWaveCursor } from "./visuals.js";
 import { advancePosition, waveAngle } from "./haptics.js";
+import { deviceSelection } from "./navigation.js";
 
 const $ = (id) => document.getElementById(id);
 let connection = null,
@@ -193,6 +194,13 @@ $("connect").addEventListener("click", async () => {
         if (connection === candidate) connection = null;
         updateConnectionUI();
       },
+      (action) => {
+        if (mode !== "haptics") return;
+        const index = presets.indexOf(selected);
+        const next = deviceSelection(presets, index, variant, action);
+        if (next.index !== index || next.variant !== variant)
+          selectPreset(presets[next.index], next.variant);
+      },
     );
     connection = candidate;
     await candidate.open(port);
@@ -218,7 +226,8 @@ $("disconnect").addEventListener("click", async () => {
   if (!old) return;
   $("disconnect").disabled = true;
   desktop?.setConnected(false);
-  // Leave the motor free when the user explicitly disconnects.
+  // Keep legacy devices free on close. Managed firmware remembers the last
+  // non-idle demo and resumes its position when ownership is released below.
   old.config(neutralConfig(++nonce));
   await old.drain(1200);
   await old.close();

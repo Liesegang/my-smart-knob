@@ -102,7 +102,7 @@ void MotorTask::run() {
 
     // disableCore0WDT();
 
-    float current_detent_center = motor.shaft_angle;
+    float current_detent_center = SK_INVERT_ROTATION ? -motor.shaft_angle : motor.shaft_angle;
     PB_SmartKnobConfig config = {
         .position = 0,
         .sub_position_unit = 0,
@@ -238,15 +238,13 @@ void MotorTask::run() {
                 last_idle_start = millis();
             }
         }
-        if (last_idle_start > 0 && millis() - last_idle_start > IDLE_CORRECTION_DELAY_MILLIS && fabsf(motor.shaft_angle - current_detent_center) < IDLE_CORRECTION_MAX_ANGLE_RAD) {
-            current_detent_center = motor.shaft_angle * IDLE_CORRECTION_RATE_ALPHA + current_detent_center * (1 - IDLE_CORRECTION_RATE_ALPHA);
+        const float knob_angle = SK_INVERT_ROTATION ? -motor.shaft_angle : motor.shaft_angle;
+        if (last_idle_start > 0 && millis() - last_idle_start > IDLE_CORRECTION_DELAY_MILLIS && fabsf(knob_angle - current_detent_center) < IDLE_CORRECTION_MAX_ANGLE_RAD) {
+            current_detent_center = knob_angle * IDLE_CORRECTION_RATE_ALPHA + current_detent_center * (1 - IDLE_CORRECTION_RATE_ALPHA);
         }
 
         // Check where we are relative to the current nearest detent; update our position if we've moved far enough to snap to another detent
-        float angle_to_detent_center = motor.shaft_angle - current_detent_center;
-        #if SK_INVERT_ROTATION
-            angle_to_detent_center = -motor.shaft_angle - current_detent_center;
-        #endif
+        float angle_to_detent_center = knob_angle - current_detent_center;
 
         float snap_point_radians = config.position_width_radians * config.snap_point;
         float bias_radians = config.position_width_radians * config.snap_point_bias;

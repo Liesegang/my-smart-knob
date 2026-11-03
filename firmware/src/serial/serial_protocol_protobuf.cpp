@@ -14,10 +14,12 @@ static SerialProtocolProtobuf* singleton_for_packet_serial = 0;
 static const uint16_t MIN_STATE_INTERVAL_MILLIS = 5;
 static const uint16_t PERIODIC_STATE_INTERVAL_MILLIS = 5000;
 
-SerialProtocolProtobuf::SerialProtocolProtobuf(Stream& stream, ConfigCallback config_callback) :
+SerialProtocolProtobuf::SerialProtocolProtobuf(Stream& stream, ConfigCallback config_callback,
+                                             std::function<void(bool)> ownership_callback) :
         SerialProtocol(),
         stream_(stream),
         config_callback_(config_callback),
+        ownership_callback_(ownership_callback),
         packet_serial_() {
     packet_serial_.setStream(&stream);
 
@@ -55,6 +57,15 @@ void SerialProtocolProtobuf::loop() {
     do {
         packet_serial_.update();
     } while (stream_.available());
+
+    if (host_session_ && millis() - last_host_renewal_ >= 5000) releaseHostControl();
+    if (host_session_ && button_count_ && (!last_button_sent_ || millis() - last_button_sent_ >= 120)) {
+        pb_tx_buffer_ = {};
+        pb_tx_buffer_.which_payload = PB_FromSmartKnob_button_event_tag;
+        pb_tx_buffer_.payload.button_event = buttons_[button_head_];
+        sendPbTxBuffer();
+        last_button_sent_ = millis();
+    }
 
     // Rate limit state change transmissions
     bool state_changed = !state_eq(latest_state_, last_sent_state_) && millis() - last_sent_state_millis_ >= MIN_STATE_INTERVAL_MILLIS;
@@ -125,9 +136,14 @@ void SerialProtocolProtobuf::handlePacket(const uint8_t* buffer, size_t size) {
     
     switch (pb_rx_buffer_.which_payload) {
         case PB_ToSmartknob_smartknob_config_tag: {
-            config_callback_(pb_rx_buffer_.payload.smartknob_config);
+            // After a managed session expires, an old in-flight config must
+            // not silently reclaim control before the next ownership grant.
+            if (!managed_host_ || host_session_) config_callback_(pb_rx_buffer_.payload.smartknob_config);
             break;
         }
+        case PB_ToSmartknob_host_control_tag:
+            handleHostControl(pb_rx_buffer_.payload.host_control);
+            break;
         case PB_ToSmartknob_request_state_tag:
             state_requested_ = true;
             break;
@@ -138,6 +154,47 @@ void SerialProtocolProtobuf::handlePacket(const uint8_t* buffer, size_t size) {
             return;
         }
     }
+}
+
+void SerialProtocolProtobuf::sendButton(PB_NavigationAction action) {
+    if (!host_session_) return;
+    if (button_count_ == 16) {
+        log("Host button queue full");
+        return;
+    }
+    if (++button_sequence_ == 0) ++button_sequence_;
+    buttons_[(button_head_ + button_count_) % 16] = {host_session_, button_sequence_, action};
+    if (button_count_++ == 0) last_button_sent_ = 0;
+}
+
+void SerialProtocolProtobuf::handleHostControl(const PB_HostControl& control) {
+    if (!control.session_id) return;
+    if (!control.enabled) {
+        if (control.session_id == host_session_) releaseHostControl();
+        return;
+    }
+    if (host_session_ != control.session_id) {
+        host_session_ = control.session_id;
+        managed_host_ = true;
+        button_head_ = button_count_ = 0;
+        button_sequence_ = last_button_sent_ = 0;
+        if (ownership_callback_) ownership_callback_(true);
+        log("Web control acquired");
+    }
+    last_host_renewal_ = millis();
+    const uint32_t acknowledged = control.acknowledged_button_sequence;
+    if (int32_t(button_sequence_ - acknowledged) < 0) return;
+    while (button_count_ && int32_t(acknowledged - buttons_[button_head_].sequence) >= 0) {
+        button_head_ = (button_head_ + 1) % 16;
+        --button_count_;
+        last_button_sent_ = 0;
+    }
+}
+
+void SerialProtocolProtobuf::releaseHostControl() {
+    host_session_ = 0;
+    button_head_ = button_count_ = 0;
+    if (ownership_callback_) ownership_callback_(false);
 }
 
 void SerialProtocolProtobuf::sendPbTxBuffer() {
